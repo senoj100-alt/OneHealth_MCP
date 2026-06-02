@@ -1,0 +1,63 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "onehealth-mcp",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-03-10",
+	"compatibility_flags": ["nodejs_compat"],
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["MyMCP"]
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MCP_OBJECT",
+				"class_name": "MyMCP"
+			}
+		]
+	},
+	"kv_namespaces": [
+		{
+			"binding": "OAUTH_KV",
+			"id": "REPLACE_WITH_YOUR_PRODUCTION_KV_NAMESPACE_ID"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "ONEHEALTH_DB",
+			"database_name": "onehealth_mcp",
+			"database_id": "REPLACE_WITH_YOUR_PRODUCTION_D1_DATABASE_ID"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	"env": {
+		"dev": {
+			"name": "onehealth-mcp-dev",
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "MCP_OBJECT",
+						"class_name": "MyMCP"
+					}
+				]
+			},
+			"kv_namespaces": [
+				{
+					"binding": "OAUTH_KV",
+					"id": "REPLACE_WITH_YOUR_DEV_KV_NAMESPACE_ID"
+				}
+			],
+			"d1_databases": [
+				{
+					"binding": "ONEHEALTH_DB",
+					"database_name": "onehealth_mcp_dev",
+					"database_id": "REPLACE_WITH_YOUR_DEV_D1_DATABASE_ID"
+				}
+			]
+		}
+	}
+}
