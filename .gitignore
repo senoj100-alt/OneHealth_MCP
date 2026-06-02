@@ -9,6 +9,7 @@ node_modules/
 .env.*
 !.env.example
 !.dev.vars.example
+wrangler.account*.jsonc
 
 # Build and generated output
 dist/
