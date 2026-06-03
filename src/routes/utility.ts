@@ -180,7 +180,575 @@ utilityRoutes.get("/signup", (c) => {
 	return c.html(html);
 });
 
+type SettingsCard = {
+	id: string;
+	label: string;
+	status: string;
+	description: string;
+	href: string;
+};
+
+type SourceSettingsCard = SettingsCard & {
+	authType: "api_key" | "oauth" | "username_password" | "coming_soon";
+	fields: string[];
+	helpText: string;
+	helpUrl?: string;
+	helpLabel?: string;
+};
+
+const SOURCE_SETTINGS: SourceSettingsCard[] = [
+	{
+		id: "hevy",
+		label: "Hevy",
+		status: "Live",
+		description: "Strength training, workouts, routines, and exercise history.",
+		href: "/settings/source/hevy",
+		authType: "api_key",
+		fields: ["apiKey"],
+		helpText: "Add your Hevy API key from Hevy developer settings.",
+		helpUrl: "https://hevy.com/settings?developer",
+		helpLabel: "Open Hevy settings",
+	},
+	{
+		id: "strava",
+		label: "Strava",
+		status: "Ready",
+		description: "Endurance activities, activity detail, HR, pace, and power when available.",
+		href: "/settings/source/strava",
+		authType: "oauth",
+		fields: ["accessToken", "refreshToken"],
+		helpText: "Paste Strava OAuth tokens for now. Full OAuth connect can be added later.",
+		helpUrl: "https://www.strava.com/settings/api",
+		helpLabel: "Open Strava API settings",
+	},
+	{
+		id: "cronometer",
+		label: "Cronometer",
+		status: "Live",
+		description: "Nutrition diary, macros, foods, and daily nutrition targets.",
+		href: "/settings/source/cronometer",
+		authType: "username_password",
+		fields: ["username", "password"],
+		helpText: "Add your Cronometer username/email and password for nutrition sync.",
+		helpUrl: "https://cronometer.com/login/",
+		helpLabel: "Open Cronometer",
+	},
+	{
+		id: "intervals_icu",
+		label: "Intervals.icu",
+		status: "Live",
+		description: "Training load, wellness, activities, events, and gear.",
+		href: "/settings/source/intervals_icu",
+		authType: "api_key",
+		fields: ["apiKey", "athleteId"],
+		helpText: "Use your Intervals.icu API key and athlete ID.",
+		helpUrl: "https://intervals.icu/settings",
+		helpLabel: "Open Intervals.icu settings",
+	},
+	{
+		id: "fitbit",
+		label: "Fitbit",
+		status: "OAuth",
+		description: "Activity, sleep, weight, heart data, and recovery signals.",
+		href: "/settings/source/fitbit",
+		authType: "oauth",
+		fields: ["accessToken", "refreshToken"],
+		helpText: "Use OAuth connect when app credentials are configured, or paste Fitbit tokens.",
+		helpUrl: "https://dev.fitbit.com/apps",
+		helpLabel: "Open Fitbit apps",
+	},
+	{
+		id: "google_fit",
+		label: "Google Fit",
+		status: "OAuth",
+		description: "Activity, body, heart-rate, and sleep aggregates from Google Fit.",
+		href: "/settings/source/google_fit",
+		authType: "oauth",
+		fields: ["accessToken", "refreshToken"],
+		helpText: "Use OAuth connect when app credentials are configured, or paste Google Fit tokens.",
+		helpUrl: "https://console.cloud.google.com/apis/credentials",
+		helpLabel: "Open Google credentials",
+	},
+	{
+		id: "garmin",
+		label: "Garmin",
+		status: "Planned",
+		description: "Activities, HRV, sleep, stress, training, and wearable health metrics.",
+		href: "/settings/source/garmin",
+		authType: "coming_soon",
+		fields: [],
+		helpText: "Garmin requires official developer/partner access. This is a placeholder.",
+	},
+	{
+		id: "oura",
+		label: "Oura",
+		status: "Planned",
+		description: "Sleep, readiness, HRV, resting heart rate, and recovery trends.",
+		href: "/settings/source/oura",
+		authType: "coming_soon",
+		fields: [],
+		helpText: "Oura support can be added as a future recovery source.",
+	},
+	{
+		id: "whoop",
+		label: "Whoop",
+		status: "Planned",
+		description: "Recovery, strain, sleep, HRV, and daily readiness context.",
+		href: "/settings/source/whoop",
+		authType: "coming_soon",
+		fields: [],
+		helpText: "Whoop support can be added as a future recovery source.",
+	},
+];
+
+const LLM_SETTINGS: SettingsCard[] = [
+	{ id: "openai", label: "OpenAI", status: "Planned", description: "Use your OpenAI key for nutrition and training insights.", href: "/settings/llm/openai" },
+	{ id: "claude", label: "Claude / Anthropic", status: "Planned", description: "Use your Anthropic key for careful, concise insight writing.", href: "/settings/llm/claude" },
+	{ id: "gemini", label: "Gemini", status: "Planned", description: "Use Gemini models for AI-generated OneHealth insights.", href: "/settings/llm/gemini" },
+	{ id: "nvidia_nim", label: "NVIDIA NIM", status: "Planned", description: "Use NVIDIA-hosted open models with your own API key.", href: "/settings/llm/nvidia_nim" },
+	{ id: "openrouter", label: "OpenRouter", status: "Planned", description: "Use OpenRouter to choose from many hosted models.", href: "/settings/llm/openrouter" },
+	{ id: "groq", label: "Groq", status: "Planned", description: "Use Groq-hosted fast inference models for short insights.", href: "/settings/llm/groq" },
+	{ id: "google_ai_studio", label: "Google AI Studio", status: "Planned", description: "Use Google AI Studio API keys for Gemini-family models.", href: "/settings/llm/google_ai_studio" },
+];
+
+const MESSAGING_SETTINGS: SettingsCard[] = [
+	{
+		id: "telegram",
+		label: "Telegram",
+		status: "Planned",
+		description: "Receive nutrition check-ins and future AI insights in Telegram.",
+		href: "/settings/messaging/telegram",
+	},
+];
+
+function settingsShell(title: string, body: string): string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>${title} - OneHealth_MCP</title>
+	<style>
+		:root {
+			color-scheme: dark;
+			font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			--bg: #080b10;
+			--panel: #10151f;
+			--panel-2: #151b27;
+			--line: #273142;
+			--text: #f5f7fb;
+			--muted: #aab4c5;
+			--soft: #d7deea;
+			--green: #8ee6b1;
+			--blue: #9db9ff;
+			--amber: #ffd38a;
+			--red: #ffb4b4;
+			--ink: #091019;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			color: var(--text);
+			background:
+				radial-gradient(circle at 82% 0%, rgba(157, 185, 255, 0.18), transparent 30rem),
+				linear-gradient(180deg, #0c1119 0%, var(--bg) 46%, #07090d 100%);
+		}
+		a { color: inherit; text-decoration: none; }
+		.shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+		nav {
+			position: sticky;
+			top: 0;
+			z-index: 10;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+			background: rgba(8, 11, 16, 0.82);
+			backdrop-filter: blur(18px);
+		}
+		nav .shell {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			min-height: 72px;
+			gap: 18px;
+		}
+		.brand {
+			display: inline-flex;
+			align-items: center;
+			gap: 10px;
+			font-weight: 850;
+		}
+		.mark {
+			display: grid;
+			place-items: center;
+			width: 32px;
+			height: 32px;
+			border-radius: 8px;
+			background: linear-gradient(135deg, var(--green), var(--blue));
+			color: var(--ink);
+			font-weight: 900;
+		}
+		.nav-links, .actions {
+			display: flex;
+			align-items: center;
+			flex-wrap: wrap;
+			gap: 10px;
+		}
+		.button, button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 42px;
+			padding: 0 16px;
+			border: 1px solid rgba(255, 255, 255, 0.14);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.06);
+			color: var(--text);
+			font: inherit;
+			font-weight: 750;
+			white-space: nowrap;
+		}
+		.button.primary, button.primary {
+			border-color: transparent;
+			background: var(--text);
+			color: var(--ink);
+		}
+		button.danger { color: var(--red); }
+		button:disabled { cursor: not-allowed; opacity: 0.52; }
+		main { padding: 58px 0 76px; }
+		.hero {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+			gap: 30px;
+			align-items: end;
+			margin-bottom: 30px;
+		}
+		.eyebrow {
+			color: var(--green);
+			font-size: 0.76rem;
+			font-weight: 820;
+			letter-spacing: 0.12em;
+			text-transform: uppercase;
+		}
+		h1 {
+			margin: 14px 0 16px;
+			font-size: clamp(3rem, 7vw, 6rem);
+			line-height: 0.9;
+			letter-spacing: 0;
+		}
+		h2, h3 { margin: 0; letter-spacing: 0; }
+		p { color: var(--muted); line-height: 1.65; }
+		.lede { max-width: 680px; margin: 0; font-size: 1.08rem; }
+		.panel, .card {
+			border: 1px solid rgba(255, 255, 255, 0.11);
+			border-radius: 8px;
+			background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+		}
+		.panel { padding: 18px; }
+		.section { margin-top: 30px; }
+		.section-head {
+			display: flex;
+			justify-content: space-between;
+			align-items: end;
+			gap: 18px;
+			margin-bottom: 14px;
+		}
+		.grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+			gap: 14px;
+		}
+		.card {
+			display: flex;
+			flex-direction: column;
+			min-height: 190px;
+			padding: 18px;
+		}
+		.card p { margin: 10px 0 18px; font-size: 0.94rem; }
+		.status {
+			display: inline-flex;
+			align-self: flex-start;
+			align-items: center;
+			min-height: 25px;
+			padding: 0 10px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 999px;
+			background: rgba(255, 255, 255, 0.05);
+			color: var(--green);
+			font-size: 0.72rem;
+			font-weight: 820;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+		}
+		.card .button { margin-top: auto; }
+		label {
+			display: block;
+			margin: 14px 0 7px;
+			color: var(--soft);
+			font-size: 0.82rem;
+			font-weight: 780;
+		}
+		input, textarea {
+			width: 100%;
+			min-height: 44px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.06);
+			color: var(--text);
+			padding: 10px 12px;
+			font: inherit;
+		}
+		textarea { min-height: 94px; resize: vertical; }
+		.row {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 12px;
+		}
+		.helper {
+			margin-top: 14px;
+			padding: 12px;
+			border: 1px solid rgba(255, 211, 138, 0.22);
+			border-radius: 8px;
+			background: rgba(255, 211, 138, 0.06);
+			color: var(--muted);
+			font-size: 0.9rem;
+		}
+		#message { min-height: 24px; margin-top: 14px; color: var(--green); font-weight: 760; }
+		footer {
+			padding: 36px 0;
+			border-top: 1px solid rgba(255, 255, 255, 0.08);
+			color: var(--muted);
+		}
+		footer .shell {
+			display: flex;
+			justify-content: space-between;
+			gap: 18px;
+			flex-wrap: wrap;
+		}
+		@media (max-width: 760px) {
+			.hero, .row { grid-template-columns: 1fr; }
+			nav .shell { align-items: flex-start; flex-direction: column; padding: 14px 0; }
+			h1 { font-size: clamp(3rem, 18vw, 4.2rem); }
+		}
+	</style>
+</head>
+<body>
+	<nav>
+		<div class="shell">
+			<a class="brand" href="/">
+				<span class="mark">1H</span>
+				<span>OneHealth_MCP</span>
+			</a>
+			<div class="nav-links">
+				<a class="button" href="/settings">Settings</a>
+				<a class="button" href="/connections">Classic connections</a>
+			</div>
+		</div>
+	</nav>
+	${body}
+	<footer>
+		<div class="shell">
+			<span>OneHealth_MCP settings</span>
+			<span>Credentials are encrypted when active saving is enabled.</span>
+		</div>
+	</footer>
+</body>
+</html>`;
+}
+
+function renderSettingsCards(cards: SettingsCard[]): string {
+	return cards
+		.map(
+			(card) => `<a class="card" href="${card.href}">
+				<span class="status">${card.status}</span>
+				<h3>${card.label}</h3>
+				<p>${card.description}</p>
+				<span class="button">Manage</span>
+			</a>`,
+		)
+		.join("");
+}
+
 utilityRoutes.get("/settings", (c) => {
+	const body = `<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">Control center</span>
+				<h1>Settings for sources, AI, and messages.</h1>
+				<p class="lede">Choose a provider card to add credentials, configure future AI insight keys, or connect messaging services. No dropdowns; every supported option gets its own place.</p>
+			</div>
+			<div class="panel">
+				<strong>Settings roadmap</strong>
+				<p>Fitness sources can reuse the current encrypted connection API. LLM and Telegram pages are ready for the next storage and bot-linking pass.</p>
+			</div>
+		</section>
+		<section class="section">
+			<div class="section-head">
+				<div>
+					<span class="eyebrow">Fitness apps and wearables</span>
+					<h2>Connect data sources.</h2>
+				</div>
+			</div>
+			<div class="grid">${renderSettingsCards(SOURCE_SETTINGS)}</div>
+		</section>
+		<section class="section">
+			<div class="section-head">
+				<div>
+					<span class="eyebrow">LLM providers</span>
+					<h2>Bring your own AI key.</h2>
+				</div>
+			</div>
+			<div class="grid">${renderSettingsCards(LLM_SETTINGS)}</div>
+		</section>
+		<section class="section">
+			<div class="section-head">
+				<div>
+					<span class="eyebrow">Messaging</span>
+					<h2>Send check-ins where users already are.</h2>
+				</div>
+			</div>
+			<div class="grid">${renderSettingsCards(MESSAGING_SETTINGS)}</div>
+		</section>
+	</main>`;
+	return c.html(settingsShell("Settings", body));
+});
+
+utilityRoutes.get("/settings/source/:id", (c) => {
+	const id = c.req.param("id");
+	const source = SOURCE_SETTINGS.find((item) => item.id === id);
+	if (!source) return c.text("Unknown source", 404);
+	const isActive = source.authType !== "coming_soon";
+	const fields = source.fields
+		.map((field) => {
+			const type = /password|secret|token|key/i.test(field) ? "password" : "text";
+			const label = field.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
+			return `<label for="${field}">${label}</label><input id="${field}" name="${field}" type="${type}" autocomplete="off" placeholder="${label}">`;
+		})
+		.join("");
+	const helpLink = source.helpUrl
+		? `<a class="button" href="${source.helpUrl}" target="_blank" rel="noreferrer">${source.helpLabel ?? "Open provider"}</a>`
+		: "";
+	const oauthLink = ["fitbit", "google_fit"].includes(source.id)
+		? `<a class="button" href="/connect/${source.id}">OAuth connect</a>`
+		: "";
+	const body = `<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">Fitness source</span>
+				<h1>${source.label}</h1>
+				<p class="lede">${source.description}</p>
+			</div>
+			<div class="panel">
+				<strong>${source.status}</strong>
+				<p>${source.helpText}</p>
+			</div>
+		</section>
+		<form class="panel" id="sourceForm">
+			${fields || `<div class="helper">This provider is planned. Credential fields will appear after the integration is approved and ready.</div>`}
+			<div class="actions">
+				<button class="primary" type="submit" ${isActive ? "" : "disabled"}>Save ${source.label}</button>
+				${oauthLink}
+				${helpLink}
+				<a class="button" href="/settings">Back to settings</a>
+			</div>
+			<div id="message"></div>
+		</form>
+	</main>
+	<script>
+		const source = ${JSON.stringify(source)};
+		const form = document.getElementById("sourceForm");
+		const message = document.getElementById("message");
+		form?.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			if (source.authType === "coming_soon") return;
+			const credentials = {};
+			for (const field of source.fields) {
+				const value = form.elements[field]?.value?.trim();
+				if (value) credentials[field] = value;
+			}
+			const response = await fetch("/api/connections", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ serviceId: source.id, authType: source.authType, credentials }),
+			});
+			const data = await response.json().catch(() => ({}));
+			message.textContent = response.ok ? "Saved connection." : (data.error || "Could not save connection. Sign in first if needed.");
+		});
+	</script>`;
+	return c.html(settingsShell(source.label, body));
+});
+
+utilityRoutes.get("/settings/llm/:id", (c) => {
+	const id = c.req.param("id");
+	const provider = LLM_SETTINGS.find((item) => item.id === id);
+	if (!provider) return c.text("Unknown LLM provider", 404);
+	const body = `<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">LLM provider</span>
+				<h1>${provider.label}</h1>
+				<p class="lede">${provider.description}</p>
+			</div>
+			<div class="panel">
+				<strong>BYOK planned</strong>
+				<p>These values will be encrypted per user and used later for OneHealth nutrition and training insights.</p>
+			</div>
+		</section>
+		<form class="panel">
+			<label for="apiKey">API key</label>
+			<textarea id="apiKey" name="apiKey" placeholder="Paste ${provider.label} API key"></textarea>
+			<div class="row">
+				<div>
+					<label for="model">Model</label>
+					<input id="model" name="model" placeholder="Model name">
+				</div>
+				<div>
+					<label for="baseUrl">Base URL</label>
+					<input id="baseUrl" name="baseUrl" placeholder="Optional endpoint URL">
+				</div>
+			</div>
+			<div class="helper">Saving is intentionally disabled until encrypted LLM credential storage is added.</div>
+			<div class="actions">
+				<button class="primary" type="button" disabled>Save ${provider.label} soon</button>
+				<button type="button" disabled>Test insight soon</button>
+				<a class="button" href="/settings">Back to settings</a>
+			</div>
+		</form>
+	</main>`;
+	return c.html(settingsShell(provider.label, body));
+});
+
+utilityRoutes.get("/settings/messaging/:id", (c) => {
+	const id = c.req.param("id");
+	const service = MESSAGING_SETTINGS.find((item) => item.id === id);
+	if (!service) return c.text("Unknown messaging service", 404);
+	const body = `<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">Messaging</span>
+				<h1>${service.label}</h1>
+				<p class="lede">${service.description}</p>
+			</div>
+			<div class="panel">
+				<strong>Deep-link flow planned</strong>
+				<p>Users will click Connect Telegram, open the OneHealth bot, and link with a short-lived code. No chat ID paste required.</p>
+			</div>
+		</section>
+		<div class="panel">
+			<label for="window">Insight window</label>
+			<input id="window" value="Every 4 hours" readonly>
+			<label for="status">Connection status</label>
+			<input id="status" value="Telegram placeholder - bot linking coming soon" readonly>
+			<div class="helper">This page is ready for Telegram bot token setup, link-code generation, test messages, and nutrition check-ins.</div>
+			<div class="actions">
+				<button class="primary" type="button" disabled>Connect Telegram soon</button>
+				<button type="button" disabled>Send test message soon</button>
+				<a class="button" href="/settings">Back to settings</a>
+			</div>
+		</div>
+	</main>`;
+	return c.html(settingsShell(service.label, body));
+});
+
+utilityRoutes.get("/settings-old", (c) => {
 	const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
