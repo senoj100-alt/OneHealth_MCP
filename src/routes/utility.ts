@@ -19,6 +19,7 @@ import {
 	upsertTelegramConnection,
 } from "../lib/notifications.js";
 import { getOneHealthServiceStatuses } from "../lib/service-registry.js";
+import { sendTelegramMessage } from "../lib/telegram.js";
 import type { Props } from "../utils.js";
 
 const utilityRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -1148,15 +1149,34 @@ utilityRoutes.post("/api/telegram/webhook", async (c) => {
 		};
 	} | null;
 	const text = update?.message?.text ?? "";
-	const match = text.match(/^\/start\s+([a-f0-9]{18})/i);
 	const chatId = update?.message?.chat?.id;
-	if (!match || chatId === undefined) return c.json({ ok: true });
+	if (chatId === undefined) return c.json({ ok: true });
+	const match = text.match(/^\/start\s+([a-f0-9]{18})/i);
+	if (!match) {
+		if (text.startsWith("/start")) {
+			await sendTelegramMessage(c.env, {
+				chatId: String(chatId),
+				text: "Open OneHealth settings, click Connect Telegram, then tap Start from that link. That gives me the secure code needed to connect your account.",
+			});
+		}
+		return c.json({ ok: true });
+	}
 	const userId = await consumeTelegramLinkCode(c.env, match[1]);
-	if (!userId) return c.json({ ok: true });
+	if (!userId) {
+		await sendTelegramMessage(c.env, {
+			chatId: String(chatId),
+			text: "This OneHealth Telegram link expired or was already used. Please return to OneHealth settings and click Connect Telegram again.",
+		});
+		return c.json({ ok: true });
+	}
 	await upsertTelegramConnection(c.env, userId, {
 		externalUserId: String(chatId),
 		externalUsername: update?.message?.chat?.username ?? update?.message?.from?.username,
 		enabled: true,
+	});
+	await sendTelegramMessage(c.env, {
+		chatId: String(chatId),
+		text: "Telegram is connected to OneHealth. You can return to OneHealth settings and save your nutrition insight schedule.",
 	});
 	return c.json({ ok: true });
 });
