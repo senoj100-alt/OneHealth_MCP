@@ -16,6 +16,7 @@ import {
 	getTelegramConnection,
 	normalizeInsightMode,
 	normalizeNotificationTimes,
+	normalizePromptInstructions,
 	normalizeTimezone,
 	upsertNotificationSchedule,
 	upsertTelegramConnection,
@@ -1087,11 +1088,13 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 			</div>
 			<label>Insight times</label>
 			<div id="times">${times.map((time) => `<div class="row time-row"><input name="times" value="${escapeHtml(time)}" placeholder="HH:MM"><button type="button" data-remove-time>Remove</button></div>`).join("")}</div>
+			<label for="promptInstructions">Insight instructions</label>
+			<textarea id="promptInstructions" name="promptInstructions" maxlength="1000" placeholder="Example: Focus on protein and fiber. Keep it under 5 bullets. Avoid motivational language.">${escapeHtml(schedule?.promptInstructions ?? "")}</textarea>
 			<div class="actions">
 				<button type="button" id="addTime">Add time</button>
 				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save schedule</button>
 			</div>
-			<div class="helper">This page is ready for Telegram bot token setup, link-code generation, test messages, and nutrition check-ins.</div>
+			<div class="helper">Instructions guide style and focus only. Every Telegram insight still includes a medical-advice disclaimer.</div>
 			<div id="message"></div>
 		</form>
 	</main>
@@ -1125,6 +1128,7 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 				timezone: form.elements.timezone.value.trim(),
 				insightMode: form.elements.insightMode.value.trim(),
 				times: Array.from(form.querySelectorAll('input[name="times"]')).map((input) => input.value.trim()),
+				promptInstructions: form.elements.promptInstructions.value.trim(),
 			};
 			const response = await fetch("/api/notification-schedule", {
 				method: "POST",
@@ -1292,6 +1296,7 @@ utilityRoutes.post("/api/notification-schedule", async (c) => {
 			timezone: normalizeTimezone(body.timezone),
 			times,
 			insightMode: normalizeInsightMode(body.insightMode),
+			promptInstructions: normalizePromptInstructions(body.promptInstructions),
 		});
 		return c.json({ success: true });
 	} catch (error) {

@@ -12,6 +12,8 @@ import {
 import { getServiceConnection } from "./service-connections.js";
 import { escapeTelegramHtml, sendTelegramMessage } from "./telegram.js";
 
+const TELEGRAM_SAFETY_FOOTER = "Not medical advice. Consult a qualified professional for health or nutrition decisions.";
+
 function sessionForDueSchedule(schedule: DueNotificationSchedule) {
 	return {
 		login: schedule.login,
@@ -88,18 +90,20 @@ async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): 
 				date,
 				mode: schedule.insightMode,
 				nutrition,
+				promptInstructions: schedule.promptInstructions,
 			})
 		: generateBasicNutritionInsight({
 				date,
 				mode: schedule.insightMode,
 				nutrition,
+				promptInstructions: schedule.promptInstructions,
 			});
 	const title = schedule.insightMode === "previous_day" || date < schedule.localDate
 		? "OneHealth previous day nutrition"
 		: "OneHealth nutrition check-in";
 	await sendTelegramMessage(env, {
 		chatId: telegram.externalUserId,
-		text: `<b>${escapeTelegramHtml(title)}</b>\n\n${escapeTelegramHtml(insight)}`,
+		text: `<b>${escapeTelegramHtml(title)}</b>\n\n${escapeTelegramHtml(insight)}\n\n${escapeTelegramHtml(TELEGRAM_SAFETY_FOOTER)}`,
 	});
 	await markNotificationSlotSent(env, schedule.userId, schedule.slotKey);
 	await logNotification(env, {

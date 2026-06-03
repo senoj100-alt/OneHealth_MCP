@@ -243,6 +243,8 @@ After a user connects one or more AI providers, they can choose a default model 
 
 Telegram pushes are dynamic per user. Cloudflare runs one Worker cron every 15 minutes, then OneHealth checks D1 for users whose configured local times are due. This avoids one cron job per user and scales more cleanly.
 
+Users can add optional Telegram insight instructions such as "focus on protein and fiber" or "keep messages short." These instructions guide style and focus only. OneHealth always appends a safety footer: "Not medical advice. Consult a qualified professional for health or nutrition decisions."
+
 The Telegram webhook endpoint is:
 
 ```txt

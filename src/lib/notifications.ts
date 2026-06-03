@@ -25,6 +25,7 @@ export interface NotificationSchedule {
 	timezone: string;
 	times: string[];
 	insightMode: InsightMode;
+	promptInstructions?: string;
 	lastSent: Record<string, string>;
 	updatedAt: string;
 }
@@ -64,6 +65,13 @@ export function normalizeTimezone(timezone: unknown): string {
 export function normalizeInsightMode(mode: unknown): InsightMode {
 	if (mode === "today_so_far" || mode === "previous_day" || mode === "smart") return mode;
 	return "smart";
+}
+
+export function normalizePromptInstructions(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	if (!trimmed) return undefined;
+	return trimmed.slice(0, 1000);
 }
 
 export async function getTelegramConnection(
@@ -168,7 +176,7 @@ export async function getNotificationSchedule(
 ): Promise<NotificationSchedule | null> {
 	const userId = await ensureUser(env, session);
 	const row = await env.ONEHEALTH_DB.prepare(
-		`SELECT channel, topic, enabled, timezone, times_json, insight_mode, last_sent_json, updated_at
+		`SELECT channel, topic, enabled, timezone, times_json, insight_mode, prompt_instructions, last_sent_json, updated_at
 		 FROM user_notification_schedules
 		 WHERE user_id = ? AND channel = 'telegram' AND topic = 'nutrition'`,
 	)
@@ -180,6 +188,7 @@ export async function getNotificationSchedule(
 			timezone: string;
 			times_json: string;
 			insight_mode: InsightMode;
+			prompt_instructions: string | null;
 			last_sent_json: string;
 			updated_at: string;
 		}>();
@@ -191,6 +200,7 @@ export async function getNotificationSchedule(
 		timezone: row.timezone,
 		times: normalizeNotificationTimes(JSON.parse(row.times_json || "[]")),
 		insightMode: normalizeInsightMode(row.insight_mode),
+		promptInstructions: normalizePromptInstructions(row.prompt_instructions),
 		lastSent: JSON.parse(row.last_sent_json || "{}") as Record<string, string>,
 		updatedAt: row.updated_at,
 	};
@@ -204,19 +214,21 @@ export async function upsertNotificationSchedule(
 		timezone: string;
 		times: string[];
 		insightMode: InsightMode;
+		promptInstructions?: string;
 	},
 ): Promise<void> {
 	const userId = await ensureUser(env, session);
 	const now = new Date().toISOString();
 	await env.ONEHEALTH_DB.prepare(
 		`INSERT INTO user_notification_schedules
-		   (id, user_id, channel, topic, enabled, timezone, times_json, insight_mode, last_sent_json, created_at, updated_at)
-		 VALUES (?, ?, 'telegram', 'nutrition', ?, ?, ?, ?, '{}', ?, ?)
+		   (id, user_id, channel, topic, enabled, timezone, times_json, insight_mode, prompt_instructions, last_sent_json, created_at, updated_at)
+		 VALUES (?, ?, 'telegram', 'nutrition', ?, ?, ?, ?, ?, '{}', ?, ?)
 		 ON CONFLICT(user_id, channel, topic) DO UPDATE SET
 		   enabled = excluded.enabled,
 		   timezone = excluded.timezone,
 		   times_json = excluded.times_json,
 		   insight_mode = excluded.insight_mode,
+		   prompt_instructions = excluded.prompt_instructions,
 		   updated_at = excluded.updated_at`,
 	)
 		.bind(
@@ -226,6 +238,7 @@ export async function upsertNotificationSchedule(
 			normalizeTimezone(args.timezone),
 			JSON.stringify(normalizeNotificationTimes(args.times)),
 			normalizeInsightMode(args.insightMode),
+			normalizePromptInstructions(args.promptInstructions) ?? null,
 			now,
 			now,
 		)
@@ -265,7 +278,7 @@ export async function listDueNutritionSchedules(
 	const { results } = await env.ONEHEALTH_DB.prepare(
 		`SELECT
 		   s.user_id, u.github_login, u.display_name, u.email,
-		   s.channel, s.topic, s.enabled, s.timezone, s.times_json, s.insight_mode, s.last_sent_json, s.updated_at
+		   s.channel, s.topic, s.enabled, s.timezone, s.times_json, s.insight_mode, s.prompt_instructions, s.last_sent_json, s.updated_at
 		 FROM user_notification_schedules s
 		 JOIN users u ON u.id = s.user_id
 		 WHERE s.channel = 'telegram' AND s.topic = 'nutrition' AND s.enabled = 1`,
@@ -280,6 +293,7 @@ export async function listDueNutritionSchedules(
 		timezone: string;
 		times_json: string;
 		insight_mode: InsightMode;
+		prompt_instructions: string | null;
 		last_sent_json: string;
 		updated_at: string;
 	}>();
@@ -305,6 +319,7 @@ export async function listDueNutritionSchedules(
 				timezone,
 				times,
 				insightMode: normalizeInsightMode(row.insight_mode),
+				promptInstructions: normalizePromptInstructions(row.prompt_instructions),
 				lastSent,
 				updatedAt: row.updated_at,
 				dueTime: time,
