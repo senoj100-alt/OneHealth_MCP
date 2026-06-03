@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../app.js";
+import { getOneHealthServiceStatuses } from "../lib/service-registry.js";
+import type { Props } from "../utils.js";
 
 const utilityRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -567,48 +569,136 @@ function renderSettingsCards(cards: SettingsCard[]): string {
 		.join("");
 }
 
+function statusLabel(source?: "user_d1" | "worker_secret" | "missing"): string {
+	if (source === "user_d1") return "Connected";
+	if (source === "worker_secret") return "Server connected";
+	return "Not connected";
+}
+
+async function getSettingsSession(c: { req: { header: (name: string) => string | undefined }; env: Env }): Promise<Props | null> {
+	const sessionCookie = c.req.header("Cookie");
+	const sessionToken = sessionCookie?.match(/session=([^;]+)/)?.[1];
+	if (!sessionToken) return null;
+	const sessionData = await c.env.OAUTH_KV.get(`session:${sessionToken}`, "json");
+	if (!sessionData || typeof sessionData !== "object" || !("login" in sessionData)) return null;
+	return sessionData as Props;
+}
+
 utilityRoutes.get("/settings", (c) => {
+	const categories: SettingsCard[] = [
+		{
+			id: "sources",
+			label: "Fitness Apps & Wearables",
+			status: "Data sources",
+			description: "Connect health apps, nutrition trackers, training platforms, and wearable devices.",
+			href: "/settings/sources",
+		},
+		{
+			id: "ai",
+			label: "AI Connections",
+			status: "BYOK",
+			description: "Add your own LLM API keys for future OneHealth nutrition and training insights.",
+			href: "/settings/ai",
+		},
+		{
+			id: "messages",
+			label: "Messages",
+			status: "Check-ins",
+			description: "Connect Telegram and future messaging channels for scheduled insight delivery.",
+			href: "/settings/messages",
+		},
+	];
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
 				<span class="eyebrow">Control center</span>
 				<h1>Settings for sources, AI, and messages.</h1>
-				<p class="lede">Choose a provider card to add credentials, configure future AI insight keys, or connect messaging services. No dropdowns; every supported option gets its own place.</p>
+				<p class="lede">Start with one of the three setup areas. Each area opens into provider cards where users can add the right details in the right place.</p>
 			</div>
 			<div class="panel">
-				<strong>Settings roadmap</strong>
-				<p>Fitness sources can reuse the current encrypted connection API. LLM and Telegram pages are ready for the next storage and bot-linking pass.</p>
+				<strong>Simple setup path</strong>
+				<p>Fitness credentials, AI keys, and messaging services stay separated so the page stays clear as OneHealth grows.</p>
 			</div>
 		</section>
 		<section class="section">
-			<div class="section-head">
-				<div>
-					<span class="eyebrow">Fitness apps and wearables</span>
-					<h2>Connect data sources.</h2>
-				</div>
-			</div>
-			<div class="grid">${renderSettingsCards(SOURCE_SETTINGS)}</div>
-		</section>
-		<section class="section">
-			<div class="section-head">
-				<div>
-					<span class="eyebrow">LLM providers</span>
-					<h2>Bring your own AI key.</h2>
-				</div>
-			</div>
-			<div class="grid">${renderSettingsCards(LLM_SETTINGS)}</div>
-		</section>
-		<section class="section">
-			<div class="section-head">
-				<div>
-					<span class="eyebrow">Messaging</span>
-					<h2>Send check-ins where users already are.</h2>
-				</div>
-			</div>
-			<div class="grid">${renderSettingsCards(MESSAGING_SETTINGS)}</div>
+			<div class="grid">${renderSettingsCards(categories)}</div>
 		</section>
 	</main>`;
 	return c.html(settingsShell("Settings", body));
+});
+
+utilityRoutes.get("/settings/sources", async (c) => {
+	const session = await getSettingsSession(c);
+	const statusMap = new Map<string, { source: "user_d1" | "worker_secret" | "missing" }>();
+	if (session) {
+		const statuses = await getOneHealthServiceStatuses(c.env, session);
+		for (const status of statuses) statusMap.set(status.id, status);
+	}
+	const cards = SOURCE_SETTINGS.map((source) => {
+		const status = statusMap.get(source.id);
+		const isComingSoon = source.authType === "coming_soon";
+		return {
+			...source,
+			status: isComingSoon ? "Coming soon" : session ? statusLabel(status?.source) : "Sign in required",
+		};
+	});
+	const body = `<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">Fitness apps and wearables</span>
+				<h1>Connect data sources.</h1>
+				<p class="lede">Add credentials for fitness apps, wearables, nutrition trackers, and training platforms. Valid saved credentials show as connected.</p>
+			</div>
+			<div class="panel">
+				<strong>${session ? `Signed in as @${session.login}` : "Sign in required"}</strong>
+				<p>${session ? "Connection status reflects your encrypted account credentials plus server-level credentials." : "Sign in to view live connection status and save credentials."}</p>
+			</div>
+		</section>
+		<section class="section">
+			<div class="grid">${renderSettingsCards(cards)}</div>
+		</section>
+	</main>`;
+	return c.html(settingsShell("Fitness Apps & Wearables", body));
+});
+
+utilityRoutes.get("/settings/ai", (c) => {
+	const body = `<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">AI connections</span>
+				<h1>Bring your own model key.</h1>
+				<p class="lede">Choose an LLM provider for future OneHealth nutrition insights, Telegram summaries, and training explanations.</p>
+			</div>
+			<div class="panel">
+				<strong>Storage pending</strong>
+				<p>Provider pages are placeholders until encrypted LLM key storage and test insight calls are wired in.</p>
+			</div>
+		</section>
+		<section class="section">
+			<div class="grid">${renderSettingsCards(LLM_SETTINGS.map((provider) => ({ ...provider, status: "Setup pending" })))}</div>
+		</section>
+	</main>`;
+	return c.html(settingsShell("AI Connections", body));
+});
+
+utilityRoutes.get("/settings/messages", (c) => {
+	const body = `<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">Messages</span>
+				<h1>Send insights where users already are.</h1>
+				<p class="lede">Connect Telegram now as the first messaging channel placeholder, with WhatsApp and other channels possible later.</p>
+			</div>
+			<div class="panel">
+				<strong>Telegram first</strong>
+				<p>The planned flow uses a bot deep link and short-lived code. Users will not need to paste chat IDs.</p>
+			</div>
+		</section>
+		<section class="section">
+			<div class="grid">${renderSettingsCards(MESSAGING_SETTINGS.map((service) => ({ ...service, status: "Setup pending" })))}</div>
+		</section>
+	</main>`;
+	return c.html(settingsShell("Messages", body));
 });
 
 utilityRoutes.get("/settings/source/:id", (c) => {
