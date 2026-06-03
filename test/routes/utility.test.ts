@@ -84,7 +84,7 @@ describe("Utility Routes", () => {
 			const html = await response.text();
 
 			expect(html).toContain('href="/connections"');
-			expect(html).toContain("Manage Connections");
+			expect(html).toContain("Connect sources");
 		});
 
 		it("should include feature sections", async () => {
@@ -95,9 +95,9 @@ describe("Utility Routes", () => {
 			const response = await utilityRoutes.fetch(request, mockEnv, mockCtx);
 			const html = await response.text();
 
-			expect(html).toContain("Unified Endpoint");
-			expect(html).toContain("Credential Safety");
-			expect(html).toContain("Service Status");
+			expect(html).toContain("How it works");
+			expect(html).toContain("Bring your fitness stack");
+			expect(html).toContain("Questions worth asking");
 		});
 
 		it("should include footer links", async () => {
@@ -110,7 +110,7 @@ describe("Utility Routes", () => {
 
 			expect(html).toContain('href="/health"');
 			expect(html).toContain("/mcp");
-			expect(html).toContain("fitness_get_connected_services");
+			expect(html).toContain("Private by default");
 		});
 
 		it("should be responsive", async () => {
@@ -123,7 +123,7 @@ describe("Utility Routes", () => {
 
 			// Check for responsive design elements
 			expect(html).toContain('meta name="viewport"');
-			expect(html).toContain("@media (prefers-color-scheme: dark)");
+			expect(html).toContain("@media (max-width: 900px)");
 		});
 
 		it("should include proper styling", async () => {
