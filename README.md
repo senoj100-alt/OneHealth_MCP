@@ -140,7 +140,16 @@ Fill in:
 ```txt
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
+GOOGLE_LOGIN_CLIENT_ID=...
+GOOGLE_LOGIN_CLIENT_SECRET=...
 COOKIE_ENCRYPTION_KEY=...
+```
+
+Google login is optional. If you enable it, create a Google OAuth web client and add these redirect URIs:
+
+```txt
+http://localhost:8787/auth/google/callback
+https://your-production-domain.example/auth/google/callback
 ```
 
 Optional OAuth app credentials for provider connect buttons:
@@ -175,6 +184,8 @@ Run only for the new `onehealth-mcp` Worker:
 ```bash
 npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
+npx wrangler secret put GOOGLE_LOGIN_CLIENT_ID
+npx wrangler secret put GOOGLE_LOGIN_CLIENT_SECRET
 npx wrangler secret put COOKIE_ENCRYPTION_KEY
 npx wrangler secret put FITBIT_CLIENT_ID
 npx wrangler secret put FITBIT_CLIENT_SECRET

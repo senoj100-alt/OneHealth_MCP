@@ -7,6 +7,13 @@
 GITHUB_CLIENT_ID=replace_with_your_github_oauth_client_id
 GITHUB_CLIENT_SECRET=replace_with_your_github_oauth_client_secret
 
+# Optional for Google sign-in.
+# Create a Google OAuth web client and add:
+# http://localhost:8787/auth/google/callback
+# https://your-worker-domain.example/auth/google/callback
+GOOGLE_LOGIN_CLIENT_ID=replace_with_google_login_oauth_client_id
+GOOGLE_LOGIN_CLIENT_SECRET=replace_with_google_login_oauth_client_secret
+
 # Required for encrypting user credentials before they are stored in Cloudflare KV.
 # Generate one with: openssl rand -hex 32
 COOKIE_ENCRYPTION_KEY=replace_with_64_character_hex_string

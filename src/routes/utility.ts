@@ -191,6 +191,27 @@ utilityRoutes.get("/", (c) => {
 			color: var(--ink);
 		}
 
+		.button.google {
+			border-color: rgba(142, 230, 177, 0.32);
+			background: rgba(142, 230, 177, 0.09);
+			color: var(--text);
+		}
+
+		.auth-row {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 10px;
+			margin-top: 28px;
+		}
+
+		.auth-note {
+			width: 100%;
+			margin: 2px 0 0;
+			color: var(--muted);
+			font-size: 0.9rem;
+		}
+
 		.hero {
 			display: grid;
 			grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
@@ -498,6 +519,30 @@ utilityRoutes.get("/", (c) => {
 			border-color: var(--ink);
 		}
 
+		.disclaimer {
+			padding: 40px 0;
+			border-top: 1px solid rgba(255, 255, 255, 0.08);
+		}
+
+		.disclaimer-box {
+			padding: 22px;
+			border: 1px solid rgba(255, 211, 138, 0.24);
+			border-radius: 8px;
+			background: rgba(255, 211, 138, 0.06);
+		}
+
+		.disclaimer-box h2 {
+			margin: 0 0 10px;
+			color: var(--amber);
+			font-size: 1.1rem;
+			line-height: 1.2;
+		}
+
+		.disclaimer-box p {
+			margin: 12px 0 0;
+			font-size: 0.94rem;
+		}
+
 		footer {
 			padding: 40px 0;
 			color: var(--muted);
@@ -540,7 +585,21 @@ utilityRoutes.get("/", (c) => {
 				overflow: auto;
 			}
 
-			.nav-actions .button:not(.primary) {
+			nav .shell {
+				gap: 12px;
+			}
+
+			nav .actions {
+				gap: 8px;
+			}
+
+			nav .actions .button {
+				min-height: 40px;
+				padding: 0 12px;
+				font-size: 0.9rem;
+			}
+
+			nav .actions .button:first-child {
 				display: none;
 			}
 
@@ -580,7 +639,8 @@ utilityRoutes.get("/", (c) => {
 			</div>
 			<div class="actions">
 				<a class="button" href="/health">Status</a>
-				<a class="button primary" href="/connections">Get started</a>
+				<a class="button" href="/connections">Sign in</a>
+				<a class="button primary" href="/auth/google?return_to=/connections">Sign up</a>
 			</div>
 		</div>
 	</nav>
@@ -594,6 +654,11 @@ utilityRoutes.get("/", (c) => {
 				<div class="actions">
 					<a class="button primary" href="/connections">Connect sources</a>
 					<a class="button" href="#how">See how it works</a>
+				</div>
+				<div class="auth-row" aria-label="Sign in options">
+					<a class="button google" href="/auth/google?return_to=/connections">Continue with Google</a>
+					<a class="button" href="/connections">Continue with GitHub</a>
+					<p class="auth-note">Use Google or GitHub to create your OneHealth account. You can connect fitness sources after signing in.</p>
 				</div>
 				<div class="micro">
 					<span>No card required</span>
@@ -721,7 +786,7 @@ utilityRoutes.get("/", (c) => {
 						<div class="price">$0</div>
 						<p>For your account and a small set of invited testers.</p>
 						<ul>
-							<li>GitHub sign-in</li>
+							<li>Google or GitHub sign-in</li>
 							<li>Per-user encrypted credentials</li>
 							<li>One MCP endpoint</li>
 						</ul>
@@ -746,9 +811,23 @@ utilityRoutes.get("/", (c) => {
 					<div>
 						<span class="eyebrow">Start here</span>
 						<h2>Connect your sources.</h2>
-						<p>Sign in, add credentials, then point your MCP client at the live OneHealth endpoint.</p>
+						<p>Sign in with Google or GitHub, add credentials, then point your MCP client at the live OneHealth endpoint.</p>
 					</div>
-					<a class="button" href="/connections">Open dashboard</a>
+					<div class="actions">
+						<a class="button google" href="/auth/google?return_to=/connections">Sign up with Google</a>
+						<a class="button" href="/connections">Sign in with GitHub</a>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="disclaimer" aria-labelledby="experimental-disclaimer">
+			<div class="shell">
+				<div class="disclaimer-box">
+					<h2 id="experimental-disclaimer">⚗️ Experimental</h2>
+					<p>This is an experimental website built to demonstrate AI-powered fitness integrations with Strava and Garmin. It is not a finished product and is provided for demonstration purposes only.</p>
+					<p>Features may be incomplete, change without notice, or stop working at any time. AI-generated insights are informational only — not medical, nutritional, or professional training advice. Use at your own risk.</p>
+					<p>By using this site you acknowledge it is a work in progress with no warranties of any kind.</p>
 				</div>
 			</div>
 		</section>

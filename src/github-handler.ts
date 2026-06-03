@@ -8,6 +8,9 @@ import {
 	getUpstreamAuthorizeUrl,
 	fetchUpstreamAuthToken,
 	fetchGitHubUser,
+	getGoogleAuthorizeUrl,
+	fetchGoogleAuthToken,
+	fetchGoogleUser,
 	type Props,
 } from "./utils.js";
 import {
@@ -37,6 +40,8 @@ interface Env {
 	ONEHEALTH_DB: D1Database;
 	GITHUB_CLIENT_ID: string;
 	GITHUB_CLIENT_SECRET: string;
+	GOOGLE_LOGIN_CLIENT_ID?: string;
+	GOOGLE_LOGIN_CLIENT_SECRET?: string;
 	COOKIE_ENCRYPTION_KEY: string;
 	FITBIT_CLIENT_ID?: string;
 	FITBIT_CLIENT_SECRET?: string;
@@ -120,6 +125,74 @@ function getBaseUrl(c: any): string {
 	return `${url.protocol}//${url.host}`;
 }
 
+function getSessionCookie(sessionToken: string): string {
+	return `session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}`;
+}
+
+function renderAuthSetupPage(provider: string, missing: string[]): string {
+	const missingItems = missing.map((name) => `<li><code>${name}</code></li>`).join("");
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>${provider} login setup required - OneHealth_MCP</title>
+	<style>
+		:root {
+			color-scheme: dark;
+			font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			--bg: #080b10;
+			--panel: #10151f;
+			--line: #273142;
+			--text: #f5f7fb;
+			--muted: #aab4c5;
+			--green: #8ee6b1;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			min-height: 100vh;
+			display: grid;
+			place-items: center;
+			padding: 24px;
+			background: linear-gradient(180deg, #0c1119 0%, var(--bg) 100%);
+			color: var(--text);
+		}
+		main {
+			width: min(560px, 100%);
+			padding: 28px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 8px;
+			background: var(--panel);
+		}
+		h1 { margin: 0 0 12px; font-size: clamp(2rem, 7vw, 3rem); line-height: 1; }
+		p, li { color: var(--muted); line-height: 1.6; }
+		code {
+			padding: 3px 7px;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 6px;
+			background: rgba(255, 255, 255, 0.08);
+			color: var(--green);
+		}
+		a {
+			color: var(--green);
+			font-weight: 750;
+			text-decoration: none;
+		}
+	</style>
+</head>
+<body>
+	<main>
+		<h1>${provider} login needs setup.</h1>
+		<p>This login option is built into OneHealth_MCP, but the production OAuth secrets have not been configured yet.</p>
+		<p>Missing Cloudflare secrets:</p>
+		<ul>${missingItems}</ul>
+		<p><a href="/">Return home</a></p>
+	</main>
+</body>
+</html>`;
+}
+
 /**
  * GET /.well-known/oauth-protected-resource
  * OAuth 2.0 Resource Server Metadata (RFC 8707)
@@ -163,6 +236,104 @@ app.get("/.well-known/oauth-authorization-server", (c) => {
 
 	response.headers.set("Access-Control-Allow-Origin", "*");
 	return response;
+});
+
+/**
+ * GET /auth/google
+ * Starts Google sign-in for website users.
+ */
+app.get("/auth/google", async (c) => {
+	const googleClientId = c.env.GOOGLE_LOGIN_CLIENT_ID;
+	const googleClientSecret = c.env.GOOGLE_LOGIN_CLIENT_SECRET;
+	const missing = [];
+	if (!googleClientId) missing.push("GOOGLE_LOGIN_CLIENT_ID");
+	if (!googleClientSecret) missing.push("GOOGLE_LOGIN_CLIENT_SECRET");
+
+	if (!googleClientId || !googleClientSecret) {
+		return c.html(renderAuthSetupPage("Google", missing), 501);
+	}
+
+	const state = generateState();
+	const returnTo = c.req.query("return_to") || "/connections";
+	const baseUrl = getBaseUrl(c);
+	const callbackUri = `${baseUrl}/auth/google/callback`;
+
+	await c.env.OAUTH_KV.put(
+		`google_login_state:${state}`,
+		JSON.stringify({
+			returnTo,
+		}),
+		{ expirationTtl: 600 }
+	);
+
+	return c.redirect(getGoogleAuthorizeUrl(googleClientId, callbackUri, state));
+});
+
+/**
+ * GET /auth/google/callback
+ * Completes Google sign-in for website users.
+ */
+app.get("/auth/google/callback", async (c) => {
+	const code = c.req.query("code");
+	const state = c.req.query("state");
+
+	if (!code || !state) {
+		return c.text("Missing code or state parameter", 400);
+	}
+
+	const googleClientId = c.env.GOOGLE_LOGIN_CLIENT_ID;
+	const googleClientSecret = c.env.GOOGLE_LOGIN_CLIENT_SECRET;
+	if (!googleClientId || !googleClientSecret) {
+		return c.html(
+			renderAuthSetupPage("Google", [
+				"GOOGLE_LOGIN_CLIENT_ID",
+				"GOOGLE_LOGIN_CLIENT_SECRET",
+			]),
+			501
+		);
+	}
+
+	const stateData = await c.env.OAUTH_KV.get(`google_login_state:${state}`, "json");
+	if (!stateData || typeof stateData !== "object") {
+		return c.text("Invalid or expired state parameter", 400);
+	}
+
+	const { returnTo } = stateData as { returnTo?: string };
+	const baseUrl = getBaseUrl(c);
+	const callbackUri = `${baseUrl}/auth/google/callback`;
+
+	try {
+		const accessToken = await fetchGoogleAuthToken(
+			code,
+			googleClientId,
+			googleClientSecret,
+			callbackUri
+		);
+		const user = await fetchGoogleUser(accessToken);
+		const sessionToken = generateState();
+		const sessionData: Props = {
+			login: user.login,
+			name: user.name,
+			email: user.email,
+			accessToken,
+			baseUrl,
+		};
+
+		await c.env.OAUTH_KV.put(`session:${sessionToken}`, JSON.stringify(sessionData), {
+			expirationTtl: 30 * 24 * 60 * 60,
+		});
+		await c.env.OAUTH_KV.delete(`google_login_state:${state}`);
+
+		const response = c.redirect(returnTo || "/connections");
+		response.headers.set("Set-Cookie", getSessionCookie(sessionToken));
+		return response;
+	} catch (error) {
+		console.error("Google OAuth callback error:", error);
+		return c.text(
+			`Google OAuth error: ${error instanceof Error ? error.message : "Unknown error"}`,
+			500
+		);
+	}
 });
 
 /**
