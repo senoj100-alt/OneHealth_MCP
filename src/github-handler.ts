@@ -1139,7 +1139,8 @@ app.get("/connections", async (c) => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ serviceId, authType: config.authType, credentials }),
 			});
-			show(response.ok ? "Saved connection." : "Could not save connection.");
+			const data = await response.json().catch(() => ({}));
+			show(response.ok ? "Saved connection." : (data.error || "Could not save connection."));
 			await load();
 		});
 
@@ -1173,19 +1174,37 @@ app.get("/api/connections", async (c) => {
 app.post("/api/connections", async (c) => {
 	const session = await getAuthenticatedSession(c);
 	if (!session) return c.json({ error: "Unauthorized" }, 401);
-	const body = await c.req.json();
-	const serviceId = body.serviceId as OneHealthServiceId;
-	const config = SERVICE_CONFIG[serviceId];
-	if (!config) return c.json({ error: "Unknown service" }, 400);
-	if (!body.credentials || typeof body.credentials !== "object") {
-		return c.json({ error: "credentials object is required" }, 400);
+	try {
+		const body = await c.req.json();
+		const serviceId = body.serviceId as OneHealthServiceId;
+		const config = SERVICE_CONFIG[serviceId];
+		if (!config) return c.json({ error: "Unknown service" }, 400);
+		if (!body.credentials || typeof body.credentials !== "object") {
+			return c.json({ error: "Credentials are required." }, 400);
+		}
+		const missingFields = config.fields.filter((field) => {
+			const value = body.credentials[field];
+			return typeof value !== "string" || value.trim().length === 0;
+		});
+		if (missingFields.length > 0) {
+			return c.json(
+				{ error: `Missing required fields: ${missingFields.join(", ")}` },
+				400,
+			);
+		}
+		await upsertServiceConnection(c.env, session, {
+			serviceId,
+			authType: body.authType ?? config.authType,
+			credentials: body.credentials,
+		});
+		return c.json({ success: true });
+	} catch (error) {
+		console.error("Connection save failed:", error);
+		return c.json(
+			{ error: "Could not save connection. Please try again." },
+			500,
+		);
 	}
-	await upsertServiceConnection(c.env, session, {
-		serviceId,
-		authType: body.authType ?? config.authType,
-		credentials: body.credentials,
-	});
-	return c.json({ success: true });
 });
 
 app.delete("/api/connections/:service", async (c) => {
