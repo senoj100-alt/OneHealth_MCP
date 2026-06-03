@@ -30,6 +30,7 @@ import {
 	type OneHealthServiceId,
 	type ServiceAuthType,
 } from "./lib/service-connections.js";
+import { getOneHealthServiceStatuses } from "./lib/service-registry.js";
 
 interface Env {
 	OAUTH_KV: KVNamespace;
@@ -39,8 +40,21 @@ interface Env {
 	COOKIE_ENCRYPTION_KEY: string;
 	FITBIT_CLIENT_ID?: string;
 	FITBIT_CLIENT_SECRET?: string;
+	FITBIT_ACCESS_TOKEN?: string;
+	FITBIT_REFRESH_TOKEN?: string;
 	GOOGLE_FIT_CLIENT_ID?: string;
 	GOOGLE_FIT_CLIENT_SECRET?: string;
+	GOOGLE_FIT_ACCESS_TOKEN?: string;
+	GOOGLE_FIT_REFRESH_TOKEN?: string;
+	HEVY_API_KEY?: string;
+	STRAVA_ACCESS_TOKEN?: string;
+	STRAVA_REFRESH_TOKEN?: string;
+	STRAVA_CLIENT_ID?: string;
+	STRAVA_CLIENT_SECRET?: string;
+	CRONOMETER_USERNAME?: string;
+	CRONOMETER_PASSWORD?: string;
+	INTERVALS_ICU_API_KEY?: string;
+	INTERVALS_ICU_ATHLETE_ID?: string;
 }
 
 // Create Hono app for OAuth routes
@@ -590,33 +604,62 @@ async function getAuthenticatedSession(c: any): Promise<Props | null> {
 
 const SERVICE_CONFIG: Record<
 	OneHealthServiceId,
-	{ label: string; authType: ServiceAuthType; fields: string[] }
+	{
+		label: string;
+		authType: ServiceAuthType;
+		fields: string[];
+		helpUrl: string;
+		helpLabel: string;
+		helpText: string;
+	}
 > = {
-	hevy: { label: "Hevy", authType: "api_key", fields: ["apiKey"] },
+	hevy: {
+		label: "Hevy",
+		authType: "api_key",
+		fields: ["apiKey"],
+		helpUrl: "https://hevy.com/settings?developer",
+		helpLabel: "Get Hevy API key",
+		helpText: "Hevy API keys are available from the web app developer settings for Hevy Pro users.",
+	},
 	strava: {
 		label: "Strava",
 		authType: "oauth",
 		fields: ["accessToken", "refreshToken"],
+		helpUrl: "https://www.strava.com/settings/api",
+		helpLabel: "Open Strava API settings",
+		helpText: "Create a Strava app here, then use OAuth or paste your own access and refresh tokens.",
 	},
 	cronometer: {
 		label: "Cronometer",
 		authType: "username_password",
 		fields: ["username", "password"],
+		helpUrl: "https://cronometer.com/login/",
+		helpLabel: "Open Cronometer",
+		helpText: "Use the Cronometer username/email and password for your own account. Cronometer does not provide a standard public API key flow.",
 	},
 	intervals_icu: {
 		label: "Intervals.icu",
 		authType: "api_key",
 		fields: ["apiKey", "athleteId"],
+		helpUrl: "https://intervals.icu/settings",
+		helpLabel: "Get Intervals.icu API key",
+		helpText: "Open Settings, then Developer Settings, and create an API key. Your athlete ID is shown in Intervals.icu.",
 	},
 	fitbit: {
 		label: "Fitbit",
 		authType: "oauth",
 		fields: ["accessToken", "refreshToken"],
+		helpUrl: "https://dev.fitbit.com/apps",
+		helpLabel: "Open Fitbit developer apps",
+		helpText: "Use OAuth connect when the app credentials are configured, or paste OAuth tokens from your own Fitbit app.",
 	},
 	google_fit: {
 		label: "Google Fit",
 		authType: "oauth",
 		fields: ["accessToken", "refreshToken"],
+		helpUrl: "https://console.cloud.google.com/apis/credentials",
+		helpLabel: "Open Google OAuth credentials",
+		helpText: "Create a Google OAuth client with Fitness API scopes, then use OAuth connect or paste tokens.",
 	},
 };
 
@@ -644,33 +687,373 @@ app.get("/connections", async (c) => {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>OneHealth_MCP Connections</title>
 	<style>
-		body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f6f7f9; }
-		main { max-width: 980px; margin: 0 auto; padding: 40px 20px; }
-		header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; border-bottom: 1px solid #d8dde8; padding-bottom: 24px; }
-		h1 { margin: 0 0 8px; font-size: 2.4rem; letter-spacing: 0; }
-		p { color: #526071; line-height: 1.6; }
-		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 24px; }
-		.card { border: 1px solid #d8dde8; border-radius: 8px; background: #fff; padding: 18px; }
-		.card h2 { margin: 0 0 4px; font-size: 1.1rem; }
-		.status { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #697386; }
-		.status.configured { color: #107647; }
-		label { display: block; margin-top: 10px; font-size: 0.8rem; font-weight: 650; color: #344054; }
-		input { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 10px; border: 1px solid #cfd6e4; border-radius: 6px; font: inherit; }
-		.actions { display: flex; gap: 8px; margin-top: 14px; }
-		button, a.button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 12px; border: 1px solid #172033; border-radius: 6px; background: #172033; color: #fff; font-weight: 650; text-decoration: none; cursor: pointer; }
-		button.secondary, a.secondary { background: transparent; color: #172033; }
-		.note { font-size: 0.8rem; color: #697386; }
-		#message { margin-top: 16px; min-height: 20px; font-weight: 650; }
+		:root {
+			color-scheme: dark;
+			font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			--bg: #080b10;
+			--panel: #10151f;
+			--panel-2: #151b27;
+			--line: #273142;
+			--text: #f5f7fb;
+			--muted: #aab4c5;
+			--soft: #d7deea;
+			--green: #8ee6b1;
+			--blue: #9db9ff;
+			--amber: #ffd38a;
+			--red: #ffb4b4;
+			--ink: #091019;
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			color: var(--text);
+			background:
+				radial-gradient(circle at 78% 0%, rgba(157, 185, 255, 0.18), transparent 31rem),
+				linear-gradient(180deg, #0c1119 0%, var(--bg) 46%, #07090d 100%);
+		}
+
+		a {
+			color: inherit;
+			text-decoration: none;
+		}
+
+		.shell {
+			width: min(1180px, calc(100% - 32px));
+			margin: 0 auto;
+		}
+
+		.notice {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+			background: rgba(8, 11, 16, 0.72);
+			backdrop-filter: blur(18px);
+		}
+
+		.notice .shell {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 10px;
+			min-height: 40px;
+			color: var(--soft);
+			font-size: 0.88rem;
+		}
+
+		.pill {
+			display: inline-flex;
+			align-items: center;
+			min-height: 24px;
+			padding: 0 10px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 999px;
+			color: var(--green);
+			background: rgba(142, 230, 177, 0.08);
+			font-size: 0.76rem;
+			font-weight: 780;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			white-space: nowrap;
+		}
+
+		nav {
+			position: sticky;
+			top: 0;
+			z-index: 10;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+			background: rgba(8, 11, 16, 0.78);
+			backdrop-filter: blur(18px);
+		}
+
+		nav .shell {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			min-height: 72px;
+			gap: 18px;
+		}
+
+		.brand {
+			display: inline-flex;
+			align-items: center;
+			gap: 10px;
+			font-weight: 850;
+			letter-spacing: 0;
+		}
+
+		.mark {
+			display: grid;
+			place-items: center;
+			width: 32px;
+			height: 32px;
+			border: 1px solid rgba(255, 255, 255, 0.18);
+			border-radius: 8px;
+			background: linear-gradient(135deg, var(--green), var(--blue));
+			color: var(--ink);
+			font-weight: 900;
+		}
+
+		.nav-actions {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+		}
+
+		.button, button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 40px;
+			padding: 0 14px;
+			border: 1px solid rgba(255, 255, 255, 0.14);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.06);
+			color: var(--text);
+			font: inherit;
+			font-weight: 760;
+			cursor: pointer;
+			white-space: nowrap;
+		}
+
+		.button.primary, button.primary {
+			border-color: transparent;
+			background: var(--text);
+			color: var(--ink);
+		}
+
+		button.danger {
+			color: var(--red);
+		}
+
+		button:disabled {
+			cursor: not-allowed;
+			opacity: 0.45;
+		}
+
+		main {
+			padding: 54px 0 84px;
+		}
+
+		header {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 24px;
+			align-items: end;
+			padding-bottom: 30px;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		}
+
+		.eyebrow {
+			color: var(--green);
+			font-size: 0.76rem;
+			font-weight: 820;
+			letter-spacing: 0.12em;
+			text-transform: uppercase;
+		}
+
+		h1 {
+			max-width: 760px;
+			margin: 12px 0 12px;
+			font-size: clamp(2.7rem, 7vw, 5.6rem);
+			line-height: 0.92;
+			letter-spacing: 0;
+		}
+
+		h2, h3 {
+			margin: 0;
+			letter-spacing: 0;
+		}
+
+		p {
+			color: var(--muted);
+			line-height: 1.65;
+		}
+
+		.lede {
+			max-width: 720px;
+			margin: 0;
+			font-size: 1.08rem;
+		}
+
+		.summary {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 14px;
+			margin-top: 24px;
+		}
+
+		.summary-card {
+			padding: 16px;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.04);
+		}
+
+		.summary-card strong {
+			display: block;
+			font-size: 1.45rem;
+			margin-bottom: 4px;
+		}
+
+		.grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+			gap: 16px;
+			margin-top: 28px;
+		}
+
+		.card {
+			display: flex;
+			flex-direction: column;
+			min-height: 430px;
+			padding: 20px;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+		}
+
+		.card-top {
+			display: flex;
+			align-items: flex-start;
+			justify-content: space-between;
+			gap: 14px;
+			margin-bottom: 14px;
+		}
+
+		.status {
+			display: inline-flex;
+			align-items: center;
+			min-height: 24px;
+			padding: 0 9px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 999px;
+			color: var(--muted);
+			background: rgba(255, 255, 255, 0.04);
+			font-size: 0.68rem;
+			font-weight: 820;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			white-space: nowrap;
+		}
+
+		.status.configured {
+			color: var(--green);
+			background: rgba(142, 230, 177, 0.08);
+		}
+
+		.status.server {
+			color: var(--blue);
+			background: rgba(157, 185, 255, 0.1);
+		}
+
+		.note {
+			margin: 8px 0 14px;
+			font-size: 0.88rem;
+		}
+
+		.help {
+			padding: 12px;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			background: rgba(8, 11, 16, 0.5);
+		}
+
+		.help p {
+			margin: 0 0 8px;
+			font-size: 0.82rem;
+		}
+
+		.help a {
+			color: var(--green);
+			font-size: 0.84rem;
+			font-weight: 780;
+		}
+
+		label {
+			display: block;
+			margin-top: 13px;
+			color: var(--soft);
+			font-size: 0.8rem;
+			font-weight: 720;
+		}
+
+		input {
+			width: 100%;
+			margin-top: 6px;
+			padding: 11px 12px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 8px;
+			background: rgba(8, 11, 16, 0.72);
+			color: var(--text);
+			font: inherit;
+		}
+
+		input::placeholder {
+			color: #6f7d92;
+		}
+
+		.actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-top: auto;
+			padding-top: 16px;
+		}
+
+		#message {
+			min-height: 24px;
+			margin-top: 18px;
+			color: var(--green);
+			font-weight: 760;
+		}
+
+		@media (max-width: 840px) {
+			header, .summary {
+				grid-template-columns: 1fr;
+			}
+
+			nav .shell {
+				align-items: flex-start;
+				flex-direction: column;
+				padding: 14px 0;
+			}
+		}
 	</style>
 </head>
 <body>
-	<main>
+	<div class="notice">
+		<div class="shell">
+			<span class="pill">Connections</span>
+			<span>Each user can add their own service credentials. Server-level secrets show as connected too.</span>
+		</div>
+	</div>
+	<nav>
+		<div class="shell">
+			<a class="brand" href="/">
+				<span class="mark">1H</span>
+				<span>OneHealth_MCP</span>
+			</a>
+			<div class="nav-actions">
+				<a class="button" href="/">Home</a>
+				<a class="button" href="/health">Status</a>
+				<a class="button primary" href="/logout">Logout</a>
+			</div>
+		</div>
+	</nav>
+	<main class="shell">
 		<header>
 			<div>
+				<span class="eyebrow">Service dashboard</span>
 				<h1>OneHealth_MCP Connections</h1>
-				<p>Connect personal health and fitness services for @${session.login}. Tokens are encrypted and stored per user in D1.</p>
+				<p class="lede">Connect personal health and fitness services for @${session.login}. Per-user tokens are encrypted in D1; server-level credentials appear as connected for every signed-in user.</p>
 			</div>
-			<a class="button secondary" href="/logout">Logout</a>
+			<div class="summary" aria-label="Connection summary">
+				<div class="summary-card"><strong id="connectedCount">0</strong><span>Connected</span></div>
+				<div class="summary-card"><strong>6</strong><span>Sources</span></div>
+				<div class="summary-card"><strong>/mcp</strong><span>Endpoint</span></div>
+			</div>
 		</header>
 		<div id="message"></div>
 		<section class="grid" id="services"></section>
@@ -679,9 +1062,21 @@ app.get("/connections", async (c) => {
 		const serviceConfig = ${JSON.stringify(SERVICE_CONFIG)};
 		const message = document.getElementById("message");
 		const services = document.getElementById("services");
+		const connectedCount = document.getElementById("connectedCount");
 
 		function fieldLabel(field) {
 			return field.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+		}
+
+		function sourceLabel(source) {
+			if (source === "user_d1") return "Connected via account";
+			if (source === "worker_secret") return "Connected via server";
+			return "Not connected";
+		}
+
+		function sourceClass(status) {
+			if (!status?.configured) return "";
+			return status.source === "worker_secret" ? "configured server" : "configured";
 		}
 
 		function show(text) {
@@ -692,9 +1087,13 @@ app.get("/connections", async (c) => {
 		async function load() {
 			const response = await fetch("/api/connections");
 			const data = await response.json();
-			const configured = new Set((data.connections || []).map((c) => c.serviceId));
+			const statuses = new Map((data.statuses || []).map((status) => [status.id, status]));
+			const connected = (data.statuses || []).filter((status) => status.configured).length;
+			connectedCount.textContent = String(connected);
 			services.innerHTML = Object.entries(serviceConfig).map(([id, config]) => {
-				const isConfigured = configured.has(id);
+				const status = statuses.get(id);
+				const isConfigured = Boolean(status?.configured);
+				const isServerConfigured = status?.source === "worker_secret";
 				const fields = config.fields.map((field) => \`
 					<label>\${fieldLabel(field)}
 						<input name="\${field}" type="\${field.toLowerCase().includes("secret") || field.toLowerCase().includes("password") || field.toLowerCase().includes("token") ? "password" : "text"}" autocomplete="off" placeholder="\${field}" />
@@ -704,13 +1103,21 @@ app.get("/connections", async (c) => {
 					: "";
 				return \`
 					<form class="card" data-service="\${id}">
-						<div class="status \${isConfigured ? "configured" : ""}">\${isConfigured ? "Connected" : "Not connected"}</div>
-						<h2>\${config.label}</h2>
-						<p class="note">Auth: \${config.authType}. Paste credentials manually or use OAuth where available.</p>
+						<div class="card-top">
+							<div>
+								<h2>\${config.label}</h2>
+								<p class="note">Auth: \${config.authType}. \${status?.notes || ""}</p>
+							</div>
+							<div class="status \${sourceClass(status)}">\${sourceLabel(status?.source)}</div>
+						</div>
+						<div class="help">
+							<p>\${config.helpText}</p>
+							<a href="\${config.helpUrl}" target="_blank" rel="noreferrer">\${config.helpLabel}</a>
+						</div>
 						\${fields}
 						<div class="actions">
-							<button type="submit">Save</button>
-							<button type="button" class="secondary" data-delete="\${id}">Delete</button>
+							<button class="primary" type="submit">Save</button>
+							<button type="button" class="danger" data-delete="\${id}" \${isServerConfigured ? "disabled" : ""}>\${isServerConfigured ? "Server secret" : "Delete"}</button>
 							\${oauthButton}
 						</div>
 					</form>\`;
@@ -756,8 +1163,11 @@ app.get("/connections", async (c) => {
 app.get("/api/connections", async (c) => {
 	const session = await getAuthenticatedSession(c);
 	if (!session) return c.json({ error: "Unauthorized" }, 401);
-	const connections = await listServiceConnections(c.env, session);
-	return c.json({ connections });
+	const [connections, statuses] = await Promise.all([
+		listServiceConnections(c.env, session),
+		getOneHealthServiceStatuses(c.env, session),
+	]);
+	return c.json({ connections, statuses });
 });
 
 app.post("/api/connections", async (c) => {
