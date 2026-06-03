@@ -60,6 +60,7 @@ app.use("*", async (c, next) => {
 	c.res.headers.set("Access-Control-Allow-Origin", "*");
 	c.res.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
 	c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+	return c.res;
 });
 
 // Error handling middleware
@@ -75,9 +76,9 @@ app.onError((err, c) => {
 });
 
 // Mount routes (order matters!)
-app.route("/", githubHandler);        // OAuth/API routes (highest priority)
+app.route("/", githubHandler);        // OAuth/API routes
 app.route("/", createMcpRoutes(mcpHandlers));  // MCP endpoints
-app.route("/", utilityRoutes);        // Health, home, etc.
+app.route("/", utilityRoutes);        // Public pages and health checks
 
 // 404 handler
 app.notFound((c) => {

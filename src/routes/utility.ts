@@ -41,7 +41,150 @@ utilityRoutes.get("/stats", async (c) => {
 	}
 });
 
+utilityRoutes.get("/signup", (c) => {
+	const googleReady = Boolean(c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET);
+	const googleAction = googleReady
+		? `<a class="button google" href="/auth/google?return_to=/connections">Continue with Google</a>`
+		: `<span class="button disabled">Google setup pending</span>`;
+
+	const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sign up - OneHealth_MCP</title>
+	<style>
+		:root {
+			color-scheme: dark;
+			font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			--bg: #080b10;
+			--panel: #10151f;
+			--line: #273142;
+			--text: #f5f7fb;
+			--muted: #aab4c5;
+			--green: #8ee6b1;
+			--ink: #091019;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			min-height: 100vh;
+			display: grid;
+			place-items: center;
+			padding: 24px;
+			color: var(--text);
+			background:
+				radial-gradient(circle at 80% 4%, rgba(157, 185, 255, 0.18), transparent 30rem),
+				linear-gradient(180deg, #0c1119 0%, var(--bg) 100%);
+		}
+		main {
+			width: min(620px, 100%);
+			padding: 30px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 8px;
+			background: var(--panel);
+			box-shadow: 0 34px 90px rgba(0, 0, 0, 0.32);
+		}
+		.brand {
+			display: inline-flex;
+			align-items: center;
+			gap: 10px;
+			margin-bottom: 28px;
+			font-weight: 850;
+		}
+		.mark {
+			display: grid;
+			place-items: center;
+			width: 34px;
+			height: 34px;
+			border-radius: 8px;
+			background: linear-gradient(135deg, var(--green), #9db9ff);
+			color: var(--ink);
+			font-weight: 900;
+		}
+		h1 {
+			margin: 0 0 12px;
+			font-size: clamp(2.5rem, 9vw, 4.8rem);
+			line-height: 0.95;
+			letter-spacing: 0;
+		}
+		p {
+			margin: 0;
+			color: var(--muted);
+			line-height: 1.65;
+		}
+		.actions {
+			display: grid;
+			gap: 12px;
+			margin-top: 28px;
+		}
+		.button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 50px;
+			padding: 0 18px;
+			border: 1px solid rgba(255, 255, 255, 0.14);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.06);
+			color: var(--text);
+			font-weight: 800;
+			text-decoration: none;
+		}
+		.button.primary {
+			border-color: transparent;
+			background: var(--text);
+			color: var(--ink);
+		}
+		.button.google {
+			border-color: rgba(142, 230, 177, 0.32);
+			background: rgba(142, 230, 177, 0.09);
+		}
+		.button.disabled {
+			justify-content: center;
+			color: var(--muted);
+			cursor: not-allowed;
+			opacity: 0.72;
+		}
+		.note {
+			margin-top: 18px;
+			font-size: 0.92rem;
+		}
+		.back {
+			display: inline-block;
+			margin-top: 24px;
+			color: var(--green);
+			font-weight: 750;
+			text-decoration: none;
+		}
+	</style>
+</head>
+<body>
+	<main>
+		<a class="brand" href="/">
+			<span class="mark">1H</span>
+			<span>OneHealth_MCP</span>
+		</a>
+		<h1>Create your OneHealth account.</h1>
+		<p>Choose a sign-in method, then connect your fitness sources from the dashboard.</p>
+		<div class="actions">
+			<a class="button primary" href="/connections">Continue with GitHub</a>
+			${googleAction}
+		</div>
+		<p class="note">GitHub is available now. Google sign-in will work after the Google OAuth client ID and secret are configured in Cloudflare.</p>
+		<a class="back" href="/">Back to homepage</a>
+	</main>
+</body>
+</html>`;
+
+	return c.html(html);
+});
+
 utilityRoutes.get("/", (c) => {
+	const googleReady = Boolean(c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET);
+	const googleHeroButton = googleReady
+		? `<a class="button google" href="/auth/google?return_to=/connections">Continue with Google</a>`
+		: `<a class="button google" href="/signup">Google setup pending</a>`;
 	const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -640,7 +783,7 @@ utilityRoutes.get("/", (c) => {
 			<div class="actions">
 				<a class="button" href="/health">Status</a>
 				<a class="button" href="/connections">Sign in</a>
-				<a class="button primary" href="/auth/google?return_to=/connections">Sign up</a>
+				<a class="button primary" href="/signup">Sign up</a>
 			</div>
 		</div>
 	</nav>
@@ -656,8 +799,8 @@ utilityRoutes.get("/", (c) => {
 					<a class="button" href="#how">See how it works</a>
 				</div>
 				<div class="auth-row" aria-label="Sign in options">
-					<a class="button google" href="/auth/google?return_to=/connections">Continue with Google</a>
 					<a class="button" href="/connections">Continue with GitHub</a>
+					${googleHeroButton}
 					<p class="auth-note">Use Google or GitHub to create your OneHealth account. You can connect fitness sources after signing in.</p>
 				</div>
 				<div class="micro">
@@ -814,8 +957,8 @@ utilityRoutes.get("/", (c) => {
 						<p>Sign in with Google or GitHub, add credentials, then point your MCP client at the live OneHealth endpoint.</p>
 					</div>
 					<div class="actions">
-						<a class="button google" href="/auth/google?return_to=/connections">Sign up with Google</a>
-						<a class="button" href="/connections">Sign in with GitHub</a>
+						<a class="button" href="/connections">Sign up with GitHub</a>
+						<a class="button google" href="/signup">Google option</a>
 					</div>
 				</div>
 			</div>

@@ -65,29 +65,6 @@ interface Env {
 // Create Hono app for OAuth routes
 const app = new Hono<{ Bindings: Env }>();
 
-// Add CORS middleware for all routes
-app.use("*", async (c, next) => {
-	// Handle OPTIONS preflight requests
-	if (c.req.method === "OPTIONS") {
-		return new Response(null, {
-			status: 204,
-			headers: {
-				"Access-Control-Allow-Origin": "*",
-				"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-				"Access-Control-Allow-Headers": "Content-Type, Authorization",
-				"Access-Control-Max-Age": "86400",
-			},
-		});
-	}
-
-	await next();
-
-	// Add CORS headers to all responses
-	c.res.headers.set("Access-Control-Allow-Origin", "*");
-	c.res.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-	c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-});
-
 /**
  * Generate a random state parameter for OAuth
  */
