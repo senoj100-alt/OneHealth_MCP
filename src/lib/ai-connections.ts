@@ -28,6 +28,11 @@ export interface AiConnection extends AiConnectionSummary {
 	apiKey: string;
 }
 
+export interface AiPreference {
+	defaultProvider: AiProviderId;
+	updatedAt: string;
+}
+
 function idFor(userId: string, provider: AiProviderId): string {
 	return `${userId}:ai:${provider}`;
 }
@@ -140,5 +145,47 @@ export async function deleteAiConnection(
 		"DELETE FROM user_ai_connections WHERE user_id = ? AND provider = ?",
 	)
 		.bind(userId, provider)
+		.run();
+	await env.ONEHEALTH_DB.prepare(
+		"DELETE FROM user_ai_preferences WHERE user_id = ? AND default_provider = ?",
+	)
+		.bind(userId, provider)
+		.run();
+}
+
+export async function getAiPreference(
+	env: AiConnectionEnv,
+	session: Pick<Props, "login" | "name" | "email">,
+): Promise<AiPreference | null> {
+	const userId = await ensureUser(env, session);
+	const row = await env.ONEHEALTH_DB.prepare(
+		`SELECT default_provider, updated_at
+		 FROM user_ai_preferences
+		 WHERE user_id = ?`,
+	)
+		.bind(userId)
+		.first<{ default_provider: AiProviderId; updated_at: string }>();
+	if (!row) return null;
+	return {
+		defaultProvider: row.default_provider,
+		updatedAt: row.updated_at,
+	};
+}
+
+export async function upsertAiPreference(
+	env: AiConnectionEnv,
+	session: Pick<Props, "login" | "name" | "email">,
+	defaultProvider: AiProviderId,
+): Promise<void> {
+	const userId = await ensureUser(env, session);
+	const now = new Date().toISOString();
+	await env.ONEHEALTH_DB.prepare(
+		`INSERT INTO user_ai_preferences (user_id, default_provider, created_at, updated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(user_id) DO UPDATE SET
+		   default_provider = excluded.default_provider,
+		   updated_at = excluded.updated_at`,
+	)
+		.bind(userId, defaultProvider, now, now)
 		.run();
 }

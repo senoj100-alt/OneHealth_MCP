@@ -1,5 +1,5 @@
 import type { Env } from "../app.js";
-import { getAiConnection, listAiConnectionSummaries } from "./ai-connections.js";
+import { getAiConnection, getAiPreference, listAiConnectionSummaries } from "./ai-connections.js";
 import { CronometerClient, KvCronometerSessionCache } from "./cronometer-client.js";
 import { generateBasicNutritionInsight, generateNutritionInsight } from "./llm-insights.js";
 import {
@@ -51,10 +51,17 @@ async function getCronometerNutrition(env: Env, schedule: DueNotificationSchedul
 
 async function getPreferredAiConnection(env: Env, schedule: DueNotificationSchedule) {
 	const session = sessionForDueSchedule(schedule);
-	const summaries = await listAiConnectionSummaries(env, session);
-	const preferred = summaries.find((summary) => summary.enabled) ?? summaries[0];
-	if (!preferred) return null;
-	return getAiConnection(env, session, preferred.provider);
+	const [summaries, preference] = await Promise.all([
+		listAiConnectionSummaries(env, session),
+		getAiPreference(env, session),
+	]);
+	const preferred = preference
+		? summaries.find((summary) => summary.provider === preference.defaultProvider && summary.enabled)
+		: undefined;
+	const fallback = summaries.find((summary) => summary.enabled) ?? summaries[0];
+	const selected = preferred ?? fallback;
+	if (!selected) return null;
+	return getAiConnection(env, session, selected.provider);
 }
 
 async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): Promise<void> {

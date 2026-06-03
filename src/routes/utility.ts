@@ -4,7 +4,9 @@ import {
 	type AiProviderId,
 	deleteAiConnection,
 	getAiConnection,
+	getAiPreference,
 	listAiConnectionSummaries,
+	upsertAiPreference,
 	upsertAiConnection,
 } from "../lib/ai-connections.js";
 import {
@@ -569,7 +571,7 @@ function settingsShell(title: string, body: string): string {
 			font-size: 0.82rem;
 			font-weight: 780;
 		}
-		input, textarea {
+		input, select, textarea {
 			width: 100%;
 			min-height: 44px;
 			border: 1px solid rgba(255, 255, 255, 0.12);
@@ -792,15 +794,62 @@ utilityRoutes.get("/settings/sources", async (c) => {
 utilityRoutes.get("/settings/ai", async (c) => {
 	const session = await getSettingsSession(c);
 	const connected = new Set<AiProviderId>();
+	const summaries = session ? await listAiConnectionSummaries(c.env, session) : [];
+	const preference = session ? await getAiPreference(c.env, session) : null;
+	const defaultProvider = preference?.defaultProvider;
 	if (session) {
-		for (const connection of await listAiConnectionSummaries(c.env, session)) {
+		for (const connection of summaries) {
 			if (connection.enabled) connected.add(connection.provider);
 		}
 	}
 	const cards = LLM_SETTINGS.map((provider) => ({
 		...provider,
-		status: session ? connected.has(provider.id as AiProviderId) ? "Connected" : "Setup pending" : "Sign in required",
+		status: session
+			? defaultProvider === provider.id
+				? "Default"
+				: connected.has(provider.id as AiProviderId)
+					? "Connected"
+					: "Setup pending"
+			: "Sign in required",
 	}));
+	const connectedOptions = summaries
+		.filter((summary) => summary.enabled)
+		.map((summary) => {
+			const label = LLM_SETTINGS.find((provider) => provider.id === summary.provider)?.label ?? summary.provider;
+			return `<option value="${summary.provider}" ${summary.provider === defaultProvider ? "selected" : ""}>${escapeHtml(label)} - ${escapeHtml(summary.modelName)}</option>`;
+		})
+		.join("");
+	const selectedSummary = summaries.find((summary) => summary.provider === defaultProvider);
+	const preferencePanel = session
+		? `<form class="panel" id="aiPreferenceForm">
+			<strong>Default AI model</strong>
+			<p>This model will be used for Telegram nutrition insights and future OneHealth AI summaries.</p>
+			${connectedOptions
+				? `<label for="defaultProvider">Use this connected model</label>
+					<select id="defaultProvider" name="defaultProvider">${connectedOptions}</select>
+					<div class="helper">${selectedSummary ? `Current default: ${escapeHtml(selectedSummary.modelName)}` : "Choose one connected provider as your default model."}</div>
+					<div class="actions">
+						<button class="primary" type="submit">Save default model</button>
+					</div>`
+				: `<div class="helper">Add an AI provider first. Then choose your default model here.</div>`}
+			<div id="preferenceMessage"></div>
+		</form>
+		<script>
+			document.getElementById("aiPreferenceForm")?.addEventListener("submit", async (event) => {
+				event.preventDefault();
+				const form = event.currentTarget;
+				const provider = form.elements.defaultProvider?.value;
+				if (!provider) return;
+				const response = await fetch("/api/ai-preferences", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ defaultProvider: provider }),
+				});
+				const data = await response.json().catch(() => ({}));
+				document.getElementById("preferenceMessage").textContent = response.ok ? "Saved default AI model." : (data.error || "Could not save default model.");
+			});
+		</script>`
+		: "";
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -813,6 +862,7 @@ utilityRoutes.get("/settings/ai", async (c) => {
 				<p>${session ? "API keys are encrypted per user. Model names are shown with examples on each provider card." : "Sign in before saving LLM API details."}</p>
 			</div>
 		</section>
+		${preferencePanel}
 		<section class="section">
 			<div class="grid">${renderSettingsCards(cards)}</div>
 		</section>
@@ -917,6 +967,7 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 	if (!provider) return c.text("Unknown LLM provider", 404);
 	const session = await getSettingsSession(c);
 	const connection = session ? (await listAiConnectionSummaries(c.env, session)).find((item) => item.provider === provider.id) : null;
+	const preference = session ? await getAiPreference(c.env, session) : null;
 	const defaults = AI_PROVIDER_DEFAULTS[provider.id as AiProviderId];
 	const guidance = provider.guidance?.map((item) => `<li>${escapeHtml(item)}</li>`).join("") ?? "";
 	const body = `<main class="shell">
@@ -950,6 +1001,7 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 			</div>
 			<div class="actions">
 				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save ${provider.label}</button>
+				<button type="button" id="makeDefault" ${connection ? "" : "disabled"}>${preference?.defaultProvider === provider.id ? "Default model" : "Use as default"}</button>
 				<button type="button" id="deleteAi" class="danger" ${connection ? "" : "disabled"}>Delete saved key</button>
 				<a class="button" href="/settings">Back to settings</a>
 			</div>
@@ -977,6 +1029,15 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 			const response = await fetch("/api/ai-connections/" + provider, { method: "DELETE" });
 			const data = await response.json().catch(() => ({}));
 			message.textContent = response.ok ? "Deleted AI connection." : (data.error || "Could not delete AI connection.");
+		});
+		document.getElementById("makeDefault")?.addEventListener("click", async () => {
+			const response = await fetch("/api/ai-preferences", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ defaultProvider: provider }),
+			});
+			const data = await response.json().catch(() => ({}));
+			message.textContent = response.ok ? "Saved as default AI model." : (data.error || "Could not save default model.");
 		});
 	</script>`;
 	return c.html(settingsShell(provider.label, body));
@@ -1080,8 +1141,11 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 utilityRoutes.get("/api/ai-connections", async (c) => {
 	const session = await getSettingsSession(c);
 	if (!session) return c.json({ error: "Unauthorized" }, 401);
-	const connections = await listAiConnectionSummaries(c.env, session);
-	return c.json({ connections });
+	const [connections, preference] = await Promise.all([
+		listAiConnectionSummaries(c.env, session),
+		getAiPreference(c.env, session),
+	]);
+	return c.json({ connections, preference });
 });
 
 utilityRoutes.post("/api/ai-connections", async (c) => {
@@ -1123,6 +1187,31 @@ utilityRoutes.delete("/api/ai-connections/:provider", async (c) => {
 	if (!AI_PROVIDER_DEFAULTS[provider]) return c.json({ error: "Unknown AI provider." }, 400);
 	await deleteAiConnection(c.env, session, provider);
 	return c.json({ success: true });
+});
+
+utilityRoutes.get("/api/ai-preferences", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	const preference = await getAiPreference(c.env, session);
+	return c.json({ preference });
+});
+
+utilityRoutes.post("/api/ai-preferences", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	try {
+		const body = await c.req.json();
+		const defaultProvider = body.defaultProvider as AiProviderId;
+		if (!AI_PROVIDER_DEFAULTS[defaultProvider]) return c.json({ error: "Unknown AI provider." }, 400);
+		const connections = await listAiConnectionSummaries(c.env, session);
+		const connection = connections.find((item) => item.provider === defaultProvider && item.enabled);
+		if (!connection) return c.json({ error: "Connect this AI provider before making it the default." }, 400);
+		await upsertAiPreference(c.env, session, defaultProvider);
+		return c.json({ success: true });
+	} catch (error) {
+		console.error("AI preference save failed:", error);
+		return c.json({ error: "Could not save default AI model." }, 500);
+	}
 });
 
 utilityRoutes.post("/api/telegram/link-code", async (c) => {

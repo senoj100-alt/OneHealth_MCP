@@ -239,6 +239,8 @@ The settings area is split into three categories:
 
 AI provider pages include guidance for model names. For example, NVIDIA NIM model IDs often look like `meta/llama-3.1-70b-instruct` or `qwen/qwen2.5-coder-32b-instruct`; OpenRouter model IDs often include a provider prefix such as `openai/gpt-4o-mini`.
 
+After a user connects one or more AI providers, they can choose a default model from `/settings/ai`. Telegram nutrition pushes use that default model first, then fall back to another enabled provider if no default is saved.
+
 Telegram pushes are dynamic per user. Cloudflare runs one Worker cron every 15 minutes, then OneHealth checks D1 for users whose configured local times are due. This avoids one cron job per user and scales more cleanly.
 
 The Telegram webhook endpoint is:
