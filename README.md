@@ -12,6 +12,8 @@ It exposes one `/mcp` endpoint while each signed-in user connects their own serv
 - **Intervals.icu**: athlete profile, activities, wellness, events, gear, sport settings
 - **Fitbit**: profile, activity summaries, sleep, body weight, heart rate
 - **Google Fit**: data sources, activity aggregates, body aggregates, heart aggregates, sleep aggregates
+- **AI providers**: user-supplied OpenAI, Claude, Gemini, NVIDIA NIM, OpenRouter, Groq, or Google AI Studio keys for future insight generation
+- **Telegram**: optional nutrition insight push channel with user-configurable delivery times
 
 ## Architecture
 
@@ -24,6 +26,7 @@ flowchart LR
 	B --> F["Cloudflare KV sessions"]
 	B --> G["Cloudflare D1 users + service_connections"]
 	G --> H["Encrypted per-user credential blobs"]
+	G --> I["AI keys + notification schedules"]
 ```
 
 ## Security Model
@@ -33,7 +36,9 @@ flowchart LR
 - Cloudflare KV stores OAuth/session state.
 - Cloudflare D1 stores users and service connection metadata.
 - Service credentials are AES-GCM encrypted before being stored in D1.
+- User LLM API keys are also AES-GCM encrypted before being stored in D1.
 - Each user manages credentials from `/connections`.
+- Each user can configure their own Telegram nutrition push times from `/settings/messages`.
 - Existing FitnessMCP Cloudflare resources are not reused. Create new KV and D1 resources for this project.
 
 ## Beginner Setup
@@ -163,6 +168,16 @@ GOOGLE_FIT_CLIENT_SECRET=...
 
 Users can also paste service credentials manually in `/connections`.
 
+Optional Telegram settings for nutrition pushes:
+
+```txt
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_BOT_USERNAME=...
+TELEGRAM_WEBHOOK_SECRET=...
+```
+
+Create the bot in Telegram with BotFather. Use the bot username without the `@` symbol.
+
 ### 8. Run locally
 
 ```bash
@@ -191,6 +206,9 @@ npx wrangler secret put FITBIT_CLIENT_ID
 npx wrangler secret put FITBIT_CLIENT_SECRET
 npx wrangler secret put GOOGLE_FIT_CLIENT_ID
 npx wrangler secret put GOOGLE_FIT_CLIENT_SECRET
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_BOT_USERNAME
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 ```
 
 ### 10. Deploy
@@ -204,6 +222,32 @@ Your MCP endpoint will be:
 ```txt
 https://onehealth-mcp.YOUR_SUBDOMAIN.workers.dev/mcp
 ```
+
+## Settings, AI Keys, and Telegram Pushes
+
+Open:
+
+```txt
+https://onehealth-mcp.YOUR_SUBDOMAIN.workers.dev/settings
+```
+
+The settings area is split into three categories:
+
+- **Fitness Apps & Wearables**: service credentials and live connection status
+- **AI Connections**: bring-your-own-key LLM setup
+- **Messages**: Telegram linking and nutrition insight schedules
+
+AI provider pages include guidance for model names. For example, NVIDIA NIM model IDs often look like `meta/llama-3.1-70b-instruct` or `qwen/qwen2.5-coder-32b-instruct`; OpenRouter model IDs often include a provider prefix such as `openai/gpt-4o-mini`.
+
+Telegram pushes are dynamic per user. Cloudflare runs one Worker cron every 15 minutes, then OneHealth checks D1 for users whose configured local times are due. This avoids one cron job per user and scales more cleanly.
+
+The Telegram webhook endpoint is:
+
+```txt
+https://onehealth-mcp.YOUR_SUBDOMAIN.workers.dev/api/telegram/webhook
+```
+
+When setting the webhook with Telegram, pass the same secret you stored as `TELEGRAM_WEBHOOK_SECRET`.
 
 ## MCP Client Config
 

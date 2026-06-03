@@ -1,5 +1,23 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../app.js";
+import {
+	type AiProviderId,
+	deleteAiConnection,
+	getAiConnection,
+	listAiConnectionSummaries,
+	upsertAiConnection,
+} from "../lib/ai-connections.js";
+import {
+	consumeTelegramLinkCode,
+	createTelegramLinkCode,
+	getNotificationSchedule,
+	getTelegramConnection,
+	normalizeInsightMode,
+	normalizeNotificationTimes,
+	normalizeTimezone,
+	upsertNotificationSchedule,
+	upsertTelegramConnection,
+} from "../lib/notifications.js";
 import { getOneHealthServiceStatuses } from "../lib/service-registry.js";
 import type { Props } from "../utils.js";
 
@@ -188,6 +206,7 @@ type SettingsCard = {
 	status: string;
 	description: string;
 	href: string;
+	guidance?: string[];
 };
 
 type SourceSettingsCard = SettingsCard & {
@@ -304,13 +323,62 @@ const SOURCE_SETTINGS: SourceSettingsCard[] = [
 ];
 
 const LLM_SETTINGS: SettingsCard[] = [
-	{ id: "openai", label: "OpenAI", status: "Planned", description: "Use your OpenAI key for nutrition and training insights.", href: "/settings/llm/openai" },
-	{ id: "claude", label: "Claude / Anthropic", status: "Planned", description: "Use your Anthropic key for careful, concise insight writing.", href: "/settings/llm/claude" },
-	{ id: "gemini", label: "Gemini", status: "Planned", description: "Use Gemini models for AI-generated OneHealth insights.", href: "/settings/llm/gemini" },
-	{ id: "nvidia_nim", label: "NVIDIA NIM", status: "Planned", description: "Use NVIDIA-hosted open models with your own API key.", href: "/settings/llm/nvidia_nim" },
-	{ id: "openrouter", label: "OpenRouter", status: "Planned", description: "Use OpenRouter to choose from many hosted models.", href: "/settings/llm/openrouter" },
-	{ id: "groq", label: "Groq", status: "Planned", description: "Use Groq-hosted fast inference models for short insights.", href: "/settings/llm/groq" },
-	{ id: "google_ai_studio", label: "Google AI Studio", status: "Planned", description: "Use Google AI Studio API keys for Gemini-family models.", href: "/settings/llm/google_ai_studio" },
+	{
+		id: "openai",
+		label: "OpenAI",
+		status: "Planned",
+		description: "Use your OpenAI key for nutrition and training insights.",
+		href: "/settings/llm/openai",
+		guidance: ["Model examples: gpt-4o-mini, gpt-4.1-mini", "Base URL: https://api.openai.com/v1"],
+	},
+	{
+		id: "claude",
+		label: "Claude / Anthropic",
+		status: "Planned",
+		description: "Use your Anthropic key for careful, concise insight writing.",
+		href: "/settings/llm/claude",
+		guidance: ["Model examples: claude-3-5-haiku-latest, claude-3-5-sonnet-latest", "Base URL: https://api.anthropic.com"],
+	},
+	{
+		id: "gemini",
+		label: "Gemini",
+		status: "Planned",
+		description: "Use Gemini models for AI-generated OneHealth insights.",
+		href: "/settings/llm/gemini",
+		guidance: ["Model examples: gemini-1.5-flash, gemini-2.0-flash", "Get keys from Google AI Studio."],
+	},
+	{
+		id: "nvidia_nim",
+		label: "NVIDIA NIM",
+		status: "Planned",
+		description: "Use NVIDIA-hosted open models with your own API key.",
+		href: "/settings/llm/nvidia_nim",
+		guidance: ["Model examples: meta/llama-3.1-70b-instruct, qwen/qwen2.5-coder-32b-instruct", "Copy the model ID exactly from NVIDIA Build."],
+	},
+	{
+		id: "openrouter",
+		label: "OpenRouter",
+		status: "Planned",
+		description: "Use OpenRouter to choose from many hosted models.",
+		href: "/settings/llm/openrouter",
+		guidance: ["Model examples: openai/gpt-4o-mini, anthropic/claude-3.5-sonnet, qwen/qwen-2.5-72b-instruct", "Base URL: https://openrouter.ai/api/v1"],
+	},
+	{
+		id: "groq",
+		label: "Groq",
+		status: "Planned",
+		description: "Use Groq-hosted fast inference models for short insights.",
+		href: "/settings/llm/groq",
+		guidance: ["Model examples: llama-3.1-8b-instant, llama-3.3-70b-versatile", "Base URL: https://api.groq.com/openai/v1"],
+	},
+	{
+		id: "google_ai_studio",
+		label: "Google AI Studio",
+		status: "Planned",
+		description: "Use Google AI Studio API keys for Gemini-family models.",
+		href: "/settings/llm/google_ai_studio",
+		guidance: ["Model examples: gemini-1.5-flash, gemini-2.0-flash", "Use the API key from AI Studio, not Google login OAuth."],
+	},
 ];
 
 const MESSAGING_SETTINGS: SettingsCard[] = [
@@ -461,10 +529,22 @@ function settingsShell(title: string, body: string): string {
 		.card {
 			display: flex;
 			flex-direction: column;
-			min-height: 190px;
+			min-height: 210px;
 			padding: 18px;
 		}
 		.card p { margin: 10px 0 18px; font-size: 0.94rem; }
+		.guidance {
+			display: grid;
+			gap: 7px;
+			margin: 0 0 18px;
+			padding: 0;
+			list-style: none;
+		}
+		.guidance li {
+			color: var(--muted);
+			font-size: 0.82rem;
+			line-height: 1.45;
+		}
 		.status {
 			display: inline-flex;
 			align-self: flex-start;
@@ -563,6 +643,7 @@ function renderSettingsCards(cards: SettingsCard[]): string {
 				<span class="status">${card.status}</span>
 				<h3>${card.label}</h3>
 				<p>${card.description}</p>
+				${card.guidance?.length ? `<ul class="guidance">${card.guidance.map((item) => `<li>${item}</li>`).join("")}</ul>` : ""}
 				<span class="button">Manage</span>
 			</a>`,
 		)
@@ -583,6 +664,52 @@ async function getSettingsSession(c: { req: { header: (name: string) => string |
 	if (!sessionData || typeof sessionData !== "object" || !("login" in sessionData)) return null;
 	return sessionData as Props;
 }
+
+function escapeHtml(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
+const AI_PROVIDER_DEFAULTS: Record<AiProviderId, { baseUrl: string; model: string; help: string }> = {
+	openai: {
+		baseUrl: "https://api.openai.com/v1",
+		model: "gpt-4o-mini",
+		help: "Use the model name from the OpenAI model picker. OpenAI-compatible proxies can override the base URL.",
+	},
+	claude: {
+		baseUrl: "https://api.anthropic.com",
+		model: "claude-3-5-haiku-latest",
+		help: "Use an Anthropic Console API key. Model names usually begin with claude-.",
+	},
+	gemini: {
+		baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+		model: "gemini-1.5-flash",
+		help: "Use a Google AI Studio API key. The model field should be only the model name, not a full URL.",
+	},
+	nvidia_nim: {
+		baseUrl: "https://integrate.api.nvidia.com/v1",
+		model: "meta/llama-3.1-70b-instruct",
+		help: "NVIDIA NIM model IDs include the publisher path. Copy the ID exactly from NVIDIA Build, for example qwen/qwen2.5-coder-32b-instruct.",
+	},
+	openrouter: {
+		baseUrl: "https://openrouter.ai/api/v1",
+		model: "openai/gpt-4o-mini",
+		help: "OpenRouter model IDs include the provider path, for example anthropic/claude-3.5-sonnet.",
+	},
+	groq: {
+		baseUrl: "https://api.groq.com/openai/v1",
+		model: "llama-3.1-8b-instant",
+		help: "Groq model names are listed in the Groq console. Keep the base URL as the OpenAI-compatible endpoint.",
+	},
+	google_ai_studio: {
+		baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+		model: "gemini-1.5-flash",
+		help: "This uses the same Gemini API shape as Google AI Studio. Paste the API key from AI Studio.",
+	},
+};
 
 utilityRoutes.get("/settings", (c) => {
 	const categories: SettingsCard[] = [
@@ -661,7 +788,18 @@ utilityRoutes.get("/settings/sources", async (c) => {
 	return c.html(settingsShell("Fitness Apps & Wearables", body));
 });
 
-utilityRoutes.get("/settings/ai", (c) => {
+utilityRoutes.get("/settings/ai", async (c) => {
+	const session = await getSettingsSession(c);
+	const connected = new Set<AiProviderId>();
+	if (session) {
+		for (const connection of await listAiConnectionSummaries(c.env, session)) {
+			if (connection.enabled) connected.add(connection.provider);
+		}
+	}
+	const cards = LLM_SETTINGS.map((provider) => ({
+		...provider,
+		status: session ? connected.has(provider.id as AiProviderId) ? "Connected" : "Setup pending" : "Sign in required",
+	}));
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -670,18 +808,24 @@ utilityRoutes.get("/settings/ai", (c) => {
 				<p class="lede">Choose an LLM provider for future OneHealth nutrition insights, Telegram summaries, and training explanations.</p>
 			</div>
 			<div class="panel">
-				<strong>Storage pending</strong>
-				<p>Provider pages are placeholders until encrypted LLM key storage and test insight calls are wired in.</p>
+				<strong>${session ? `Signed in as @${escapeHtml(session.login)}` : "Sign in required"}</strong>
+				<p>${session ? "API keys are encrypted per user. Model names are shown with examples on each provider card." : "Sign in before saving LLM API details."}</p>
 			</div>
 		</section>
 		<section class="section">
-			<div class="grid">${renderSettingsCards(LLM_SETTINGS.map((provider) => ({ ...provider, status: "Setup pending" })))}</div>
+			<div class="grid">${renderSettingsCards(cards)}</div>
 		</section>
 	</main>`;
 	return c.html(settingsShell("AI Connections", body));
 });
 
-utilityRoutes.get("/settings/messages", (c) => {
+utilityRoutes.get("/settings/messages", async (c) => {
+	const session = await getSettingsSession(c);
+	const telegram = session ? await getTelegramConnection(c.env, session) : null;
+	const cards = MESSAGING_SETTINGS.map((service) => ({
+		...service,
+		status: session ? telegram?.enabled ? "Connected" : "Setup pending" : "Sign in required",
+	}));
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -690,12 +834,12 @@ utilityRoutes.get("/settings/messages", (c) => {
 				<p class="lede">Connect Telegram now as the first messaging channel placeholder, with WhatsApp and other channels possible later.</p>
 			</div>
 			<div class="panel">
-				<strong>Telegram first</strong>
-				<p>The planned flow uses a bot deep link and short-lived code. Users will not need to paste chat IDs.</p>
+				<strong>${telegram?.enabled ? "Telegram connected" : "Telegram first"}</strong>
+				<p>${telegram?.enabled ? "Nutrition insight schedules can now send to Telegram." : "The setup flow uses a bot deep link and short-lived code. Users do not need to paste chat IDs."}</p>
 			</div>
 		</section>
 		<section class="section">
-			<div class="grid">${renderSettingsCards(MESSAGING_SETTINGS.map((service) => ({ ...service, status: "Setup pending" })))}</div>
+			<div class="grid">${renderSettingsCards(cards)}</div>
 		</section>
 	</main>`;
 	return c.html(settingsShell("Messages", body));
@@ -766,10 +910,14 @@ utilityRoutes.get("/settings/source/:id", (c) => {
 	return c.html(settingsShell(source.label, body));
 });
 
-utilityRoutes.get("/settings/llm/:id", (c) => {
+utilityRoutes.get("/settings/llm/:id", async (c) => {
 	const id = c.req.param("id");
 	const provider = LLM_SETTINGS.find((item) => item.id === id);
 	if (!provider) return c.text("Unknown LLM provider", 404);
+	const session = await getSettingsSession(c);
+	const connection = session ? (await listAiConnectionSummaries(c.env, session)).find((item) => item.provider === provider.id) : null;
+	const defaults = AI_PROVIDER_DEFAULTS[provider.id as AiProviderId];
+	const guidance = provider.guidance?.map((item) => `<li>${escapeHtml(item)}</li>`).join("") ?? "";
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -778,38 +926,69 @@ utilityRoutes.get("/settings/llm/:id", (c) => {
 				<p class="lede">${provider.description}</p>
 			</div>
 			<div class="panel">
-				<strong>BYOK planned</strong>
-				<p>These values will be encrypted per user and used later for OneHealth nutrition and training insights.</p>
+				<strong>${connection?.enabled ? "Connected" : session ? "Setup pending" : "Sign in required"}</strong>
+				<p>${escapeHtml(defaults.help)}</p>
 			</div>
 		</section>
-		<form class="panel">
+		<form class="panel" id="aiForm">
 			<label for="apiKey">API key</label>
-			<textarea id="apiKey" name="apiKey" placeholder="Paste ${provider.label} API key"></textarea>
+			<textarea id="apiKey" name="apiKey" placeholder="${connection ? "Leave blank to keep the saved key" : `Paste ${provider.label} API key`}"></textarea>
 			<div class="row">
 				<div>
 					<label for="model">Model</label>
-					<input id="model" name="model" placeholder="Model name">
+					<input id="model" name="model" value="${escapeHtml(connection?.modelName ?? defaults.model)}" placeholder="${escapeHtml(defaults.model)}">
 				</div>
 				<div>
 					<label for="baseUrl">Base URL</label>
-					<input id="baseUrl" name="baseUrl" placeholder="Optional endpoint URL">
+					<input id="baseUrl" name="baseUrl" value="${escapeHtml(connection?.baseUrl ?? defaults.baseUrl)}" placeholder="${escapeHtml(defaults.baseUrl)}">
 				</div>
 			</div>
-			<div class="helper">Saving is intentionally disabled until encrypted LLM credential storage is added.</div>
+			<div class="helper">
+				<ul class="guidance">${guidance}</ul>
+				<div>Use the model name exactly as the provider displays it. For NVIDIA NIM and OpenRouter, that usually includes a provider prefix such as <strong>qwen/...</strong> or <strong>openai/...</strong>.</div>
+			</div>
 			<div class="actions">
-				<button class="primary" type="button" disabled>Save ${provider.label} soon</button>
-				<button type="button" disabled>Test insight soon</button>
+				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save ${provider.label}</button>
+				<button type="button" id="deleteAi" class="danger" ${connection ? "" : "disabled"}>Delete saved key</button>
 				<a class="button" href="/settings">Back to settings</a>
 			</div>
+			<div id="message"></div>
 		</form>
-	</main>`;
+	</main>
+	<script>
+		const provider = ${JSON.stringify(provider.id)};
+		const form = document.getElementById("aiForm");
+		const message = document.getElementById("message");
+		form?.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			const apiKey = form.elements.apiKey.value.trim();
+			const modelName = form.elements.model.value.trim();
+			const baseUrl = form.elements.baseUrl.value.trim();
+			const response = await fetch("/api/ai-connections", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ provider, apiKey, modelName, baseUrl, keepExistingKey: ${connection ? "true" : "false"} }),
+			});
+			const data = await response.json().catch(() => ({}));
+			message.textContent = response.ok ? "Saved AI connection." : (data.error || "Could not save AI connection.");
+		});
+		document.getElementById("deleteAi")?.addEventListener("click", async () => {
+			const response = await fetch("/api/ai-connections/" + provider, { method: "DELETE" });
+			const data = await response.json().catch(() => ({}));
+			message.textContent = response.ok ? "Deleted AI connection." : (data.error || "Could not delete AI connection.");
+		});
+	</script>`;
 	return c.html(settingsShell(provider.label, body));
 });
 
-utilityRoutes.get("/settings/messaging/:id", (c) => {
+utilityRoutes.get("/settings/messaging/:id", async (c) => {
 	const id = c.req.param("id");
 	const service = MESSAGING_SETTINGS.find((item) => item.id === id);
 	if (!service) return c.text("Unknown messaging service", 404);
+	const session = await getSettingsSession(c);
+	const telegram = session ? await getTelegramConnection(c.env, session) : null;
+	const schedule = session ? await getNotificationSchedule(c.env, session) : null;
+	const times = schedule?.times.length ? schedule.times : ["06:00", "10:00", "15:00", "22:00"];
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -818,24 +997,198 @@ utilityRoutes.get("/settings/messaging/:id", (c) => {
 				<p class="lede">${service.description}</p>
 			</div>
 			<div class="panel">
-				<strong>Deep-link flow planned</strong>
-				<p>Users will click Connect Telegram, open the OneHealth bot, and link with a short-lived code. No chat ID paste required.</p>
+				<strong>${telegram?.enabled ? "Connected" : session ? "Ready to connect" : "Sign in required"}</strong>
+				<p>${telegram?.externalUsername ? `Linked to @${escapeHtml(telegram.externalUsername)}.` : "Users click Connect Telegram, open the OneHealth bot, and link with a short-lived code. No chat ID paste required."}</p>
 			</div>
 		</section>
 		<div class="panel">
-			<label for="window">Insight window</label>
-			<input id="window" value="Every 4 hours" readonly>
-			<label for="status">Connection status</label>
-			<input id="status" value="Telegram placeholder - bot linking coming soon" readonly>
-			<div class="helper">This page is ready for Telegram bot token setup, link-code generation, test messages, and nutrition check-ins.</div>
 			<div class="actions">
-				<button class="primary" type="button" disabled>Connect Telegram soon</button>
-				<button type="button" disabled>Send test message soon</button>
-				<a class="button" href="/settings">Back to settings</a>
+				<button class="primary" id="connectTelegram" type="button" ${session ? "" : "disabled"}>${telegram?.enabled ? "Reconnect Telegram" : "Connect Telegram"}</button>
+				<a class="button" href="/settings/messages">Back to messages</a>
 			</div>
+			<div class="helper" id="telegramLinkMessage">A Telegram bot token and bot username must be configured in Cloudflare before the deep link can be used in production.</div>
 		</div>
-	</main>`;
+		<form class="panel" id="scheduleForm">
+			<label>
+				<input id="enabled" name="enabled" type="checkbox" ${schedule?.enabled ? "checked" : ""} style="width:auto; min-height:auto; margin-right:8px;">
+				Enable nutrition insight pushes
+			</label>
+			<div class="row">
+				<div>
+					<label for="timezone">Timezone</label>
+					<input id="timezone" name="timezone" value="${escapeHtml(schedule?.timezone ?? "America/New_York")}" placeholder="America/New_York">
+				</div>
+				<div>
+					<label for="insightMode">Insight mode</label>
+					<input id="insightMode" name="insightMode" value="${escapeHtml(schedule?.insightMode ?? "smart")}" placeholder="smart">
+				</div>
+			</div>
+			<label>Insight times</label>
+			<div id="times">${times.map((time) => `<div class="row time-row"><input name="times" value="${escapeHtml(time)}" placeholder="HH:MM"><button type="button" data-remove-time>Remove</button></div>`).join("")}</div>
+			<div class="actions">
+				<button type="button" id="addTime">Add time</button>
+				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save schedule</button>
+			</div>
+			<div class="helper">This page is ready for Telegram bot token setup, link-code generation, test messages, and nutrition check-ins.</div>
+			<div id="message"></div>
+		</form>
+	</main>
+	<script>
+		const linkMessage = document.getElementById("telegramLinkMessage");
+		document.getElementById("connectTelegram")?.addEventListener("click", async () => {
+			const response = await fetch("/api/telegram/link-code", { method: "POST" });
+			const data = await response.json().catch(() => ({}));
+			if (!response.ok) {
+				linkMessage.textContent = data.error || "Could not create Telegram link.";
+				return;
+			}
+			linkMessage.innerHTML = 'Open Telegram and tap Start: <a href="' + data.botUrl + '" target="_blank" rel="noreferrer">' + data.botUrl + '</a>';
+			window.open(data.botUrl, "_blank", "noopener,noreferrer");
+		});
+		const times = document.getElementById("times");
+		document.getElementById("addTime")?.addEventListener("click", () => {
+			const row = document.createElement("div");
+			row.className = "row time-row";
+			row.innerHTML = '<input name="times" value="12:00" placeholder="HH:MM"><button type="button" data-remove-time>Remove</button>';
+			times.appendChild(row);
+		});
+		times?.addEventListener("click", (event) => {
+			if (event.target.dataset?.removeTime !== undefined) event.target.closest(".time-row")?.remove();
+		});
+		document.getElementById("scheduleForm")?.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			const form = event.currentTarget;
+			const payload = {
+				enabled: form.elements.enabled.checked,
+				timezone: form.elements.timezone.value.trim(),
+				insightMode: form.elements.insightMode.value.trim(),
+				times: Array.from(form.querySelectorAll('input[name="times"]')).map((input) => input.value.trim()),
+			};
+			const response = await fetch("/api/notification-schedule", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload),
+			});
+			const data = await response.json().catch(() => ({}));
+			document.getElementById("message").textContent = response.ok ? "Saved notification schedule." : (data.error || "Could not save schedule.");
+		});
+	</script>`;
 	return c.html(settingsShell(service.label, body));
+});
+
+utilityRoutes.get("/api/ai-connections", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	const connections = await listAiConnectionSummaries(c.env, session);
+	return c.json({ connections });
+});
+
+utilityRoutes.post("/api/ai-connections", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	try {
+		const body = await c.req.json();
+		const provider = body.provider as AiProviderId;
+		if (!AI_PROVIDER_DEFAULTS[provider]) return c.json({ error: "Unknown AI provider." }, 400);
+		const modelName = typeof body.modelName === "string" ? body.modelName.trim() : "";
+		const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
+		let apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+		if (!modelName) return c.json({ error: "Model name is required." }, 400);
+		if (!apiKey && body.keepExistingKey) {
+			const existing = (await listAiConnectionSummaries(c.env, session)).find((item) => item.provider === provider);
+			if (existing) {
+				apiKey = (await getAiConnection(c.env, session, provider))?.apiKey ?? "";
+			}
+		}
+		if (!apiKey) return c.json({ error: "API key is required." }, 400);
+		await upsertAiConnection(c.env, session, {
+			provider,
+			apiKey,
+			baseUrl,
+			modelName,
+			enabled: true,
+		});
+		return c.json({ success: true });
+	} catch (error) {
+		console.error("AI connection save failed:", error);
+		return c.json({ error: "Could not save AI connection." }, 500);
+	}
+});
+
+utilityRoutes.delete("/api/ai-connections/:provider", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	const provider = c.req.param("provider") as AiProviderId;
+	if (!AI_PROVIDER_DEFAULTS[provider]) return c.json({ error: "Unknown AI provider." }, 400);
+	await deleteAiConnection(c.env, session, provider);
+	return c.json({ success: true });
+});
+
+utilityRoutes.post("/api/telegram/link-code", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	if (!c.env.TELEGRAM_BOT_USERNAME) {
+		return c.json({ error: "TELEGRAM_BOT_USERNAME must be configured before Telegram linking is available." }, 503);
+	}
+	const code = await createTelegramLinkCode(c.env, session);
+	const botUrl = `https://t.me/${encodeURIComponent(c.env.TELEGRAM_BOT_USERNAME)}?start=${encodeURIComponent(code)}`;
+	return c.json({ code, botUrl, expiresInSeconds: 600 });
+});
+
+utilityRoutes.post("/api/telegram/webhook", async (c) => {
+	if (c.env.TELEGRAM_WEBHOOK_SECRET) {
+		const token = c.req.header("X-Telegram-Bot-Api-Secret-Token");
+		if (token !== c.env.TELEGRAM_WEBHOOK_SECRET) return c.json({ ok: false }, 401);
+	}
+	const update = await c.req.json().catch(() => null) as {
+		message?: {
+			text?: string;
+			chat?: { id?: number | string; username?: string };
+			from?: { username?: string };
+		};
+	} | null;
+	const text = update?.message?.text ?? "";
+	const match = text.match(/^\/start\s+([a-f0-9]{18})/i);
+	const chatId = update?.message?.chat?.id;
+	if (!match || chatId === undefined) return c.json({ ok: true });
+	const userId = await consumeTelegramLinkCode(c.env, match[1]);
+	if (!userId) return c.json({ ok: true });
+	await upsertTelegramConnection(c.env, userId, {
+		externalUserId: String(chatId),
+		externalUsername: update?.message?.chat?.username ?? update?.message?.from?.username,
+		enabled: true,
+	});
+	return c.json({ ok: true });
+});
+
+utilityRoutes.get("/api/notification-schedule", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	const [telegram, schedule] = await Promise.all([
+		getTelegramConnection(c.env, session),
+		getNotificationSchedule(c.env, session),
+	]);
+	return c.json({ telegram, schedule });
+});
+
+utilityRoutes.post("/api/notification-schedule", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	try {
+		const body = await c.req.json();
+		const times = normalizeNotificationTimes(body.times);
+		if (times.length === 0) return c.json({ error: "Add at least one valid time in HH:MM format." }, 400);
+		await upsertNotificationSchedule(c.env, session, {
+			enabled: Boolean(body.enabled),
+			timezone: normalizeTimezone(body.timezone),
+			times,
+			insightMode: normalizeInsightMode(body.insightMode),
+		});
+		return c.json({ success: true });
+	} catch (error) {
+		console.error("Notification schedule save failed:", error);
+		return c.json({ error: "Could not save notification schedule." }, 500);
+	}
 });
 
 utilityRoutes.get("/settings-old", (c) => {

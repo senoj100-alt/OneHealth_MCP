@@ -28,6 +28,9 @@ interface Env {
 	CRONOMETER_PASSWORD?: string;
 	INTERVALS_ICU_API_KEY?: string;
 	INTERVALS_ICU_ATHLETE_ID?: string;
+	TELEGRAM_BOT_TOKEN?: string;
+	TELEGRAM_BOT_USERNAME?: string;
+	TELEGRAM_WEBHOOK_SECRET?: string;
 }
 
 // Variables interface for Hono context

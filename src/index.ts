@@ -1,6 +1,13 @@
-// Export Hono app as default
 import app from "./app.js";
-export default app;
+import { processNutritionNotifications } from "./lib/scheduled-nutrition.js";
+
+export default {
+	fetch: app.fetch,
+	async scheduled(_controller: ScheduledController, env: Parameters<typeof processNutritionNotifications>[0]) {
+		const result = await processNutritionNotifications(env);
+		console.log(`Nutrition notification run complete: ${result.processed} processed, ${result.failed} failed.`);
+	},
+};
 
 // Export Durable Object
 export { MyMCP } from "./mcp-agent.js";
