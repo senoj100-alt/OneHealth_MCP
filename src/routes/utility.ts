@@ -180,6 +180,421 @@ utilityRoutes.get("/signup", (c) => {
 	return c.html(html);
 });
 
+utilityRoutes.get("/settings", (c) => {
+	const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="description" content="Configure OneHealth_MCP fitness apps, LLM providers, and messaging integrations.">
+	<title>Settings - OneHealth_MCP</title>
+	<style>
+		:root {
+			color-scheme: dark;
+			font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			--bg: #080b10;
+			--panel: #10151f;
+			--panel-2: #151b27;
+			--line: #273142;
+			--text: #f5f7fb;
+			--muted: #aab4c5;
+			--soft: #d7deea;
+			--green: #8ee6b1;
+			--blue: #9db9ff;
+			--amber: #ffd38a;
+			--ink: #091019;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			color: var(--text);
+			background:
+				radial-gradient(circle at 82% 0%, rgba(157, 185, 255, 0.18), transparent 30rem),
+				linear-gradient(180deg, #0c1119 0%, var(--bg) 46%, #07090d 100%);
+		}
+		a { color: inherit; text-decoration: none; }
+		.shell {
+			width: min(1120px, calc(100% - 32px));
+			margin: 0 auto;
+		}
+		nav {
+			position: sticky;
+			top: 0;
+			z-index: 10;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+			background: rgba(8, 11, 16, 0.82);
+			backdrop-filter: blur(18px);
+		}
+		nav .shell {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			min-height: 72px;
+			gap: 18px;
+		}
+		.brand {
+			display: inline-flex;
+			align-items: center;
+			gap: 10px;
+			font-weight: 850;
+		}
+		.mark {
+			display: grid;
+			place-items: center;
+			width: 32px;
+			height: 32px;
+			border-radius: 8px;
+			background: linear-gradient(135deg, var(--green), var(--blue));
+			color: var(--ink);
+			font-weight: 900;
+		}
+		.nav-links {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+		}
+		.button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 42px;
+			padding: 0 16px;
+			border: 1px solid rgba(255, 255, 255, 0.14);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.06);
+			color: var(--text);
+			font-weight: 750;
+			white-space: nowrap;
+		}
+		.button.primary {
+			border-color: transparent;
+			background: var(--text);
+			color: var(--ink);
+		}
+		main {
+			padding: 64px 0 76px;
+		}
+		.hero {
+			display: grid;
+			grid-template-columns: minmax(0, 0.85fr) minmax(320px, 0.55fr);
+			gap: 34px;
+			align-items: end;
+			margin-bottom: 34px;
+		}
+		.eyebrow {
+			color: var(--green);
+			font-size: 0.76rem;
+			font-weight: 820;
+			letter-spacing: 0.12em;
+			text-transform: uppercase;
+		}
+		h1 {
+			margin: 14px 0 16px;
+			font-size: clamp(3rem, 7vw, 6.2rem);
+			line-height: 0.9;
+			letter-spacing: 0;
+		}
+		p {
+			color: var(--muted);
+			line-height: 1.65;
+		}
+		.lede {
+			max-width: 660px;
+			margin: 0;
+			font-size: 1.08rem;
+		}
+		.status-panel {
+			padding: 18px;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.04);
+		}
+		.status-panel strong {
+			display: block;
+			margin-bottom: 8px;
+			font-size: 1.05rem;
+		}
+		.status-panel p {
+			margin: 0;
+			font-size: 0.94rem;
+		}
+		.settings-grid {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 16px;
+		}
+		.card {
+			min-height: 100%;
+			padding: 22px;
+			border: 1px solid rgba(255, 255, 255, 0.11);
+			border-radius: 8px;
+			background: var(--panel);
+		}
+		.card h2 {
+			margin: 0 0 10px;
+			font-size: 1.35rem;
+			letter-spacing: 0;
+		}
+		.card p {
+			margin: 0 0 18px;
+			font-size: 0.94rem;
+		}
+		label {
+			display: block;
+			margin: 14px 0 7px;
+			color: var(--soft);
+			font-size: 0.82rem;
+			font-weight: 780;
+		}
+		input, select, textarea {
+			width: 100%;
+			min-height: 42px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.06);
+			color: var(--text);
+			padding: 10px 12px;
+			font: inherit;
+		}
+		textarea {
+			min-height: 86px;
+			resize: vertical;
+		}
+		select option {
+			color: #111827;
+		}
+		.row {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 12px;
+		}
+		.helper {
+			margin-top: 12px;
+			padding: 12px;
+			border: 1px solid rgba(255, 211, 138, 0.22);
+			border-radius: 8px;
+			background: rgba(255, 211, 138, 0.06);
+			color: var(--muted);
+			font-size: 0.88rem;
+		}
+		.provider-list {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-top: 14px;
+		}
+		.chip {
+			display: inline-flex;
+			align-items: center;
+			min-height: 30px;
+			padding: 0 10px;
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 999px;
+			background: rgba(255, 255, 255, 0.05);
+			color: var(--soft);
+			font-size: 0.82rem;
+			font-weight: 720;
+		}
+		.card-actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			margin-top: 18px;
+		}
+		.disabled {
+			opacity: 0.62;
+			cursor: not-allowed;
+		}
+		footer {
+			padding: 36px 0;
+			border-top: 1px solid rgba(255, 255, 255, 0.08);
+			color: var(--muted);
+		}
+		footer .shell {
+			display: flex;
+			justify-content: space-between;
+			gap: 18px;
+			flex-wrap: wrap;
+		}
+		@media (max-width: 980px) {
+			.hero, .settings-grid {
+				grid-template-columns: 1fr;
+			}
+		}
+		@media (max-width: 560px) {
+			.shell {
+				width: min(100% - 24px, 1120px);
+			}
+			nav .shell {
+				align-items: flex-start;
+				flex-direction: column;
+				padding: 14px 0;
+			}
+			.nav-links {
+				width: 100%;
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+			}
+			.row {
+				grid-template-columns: 1fr;
+			}
+			h1 {
+				font-size: clamp(3rem, 18vw, 4.2rem);
+			}
+		}
+	</style>
+</head>
+<body>
+	<nav>
+		<div class="shell">
+			<a class="brand" href="/">
+				<span class="mark">1H</span>
+				<span>OneHealth_MCP</span>
+			</a>
+			<div class="nav-links" aria-label="Settings navigation">
+				<a class="button" href="/connections">Connections</a>
+				<a class="button primary" href="/settings">Settings</a>
+			</div>
+		</div>
+	</nav>
+
+	<main class="shell">
+		<section class="hero">
+			<div>
+				<span class="eyebrow">Account setup</span>
+				<h1>Settings for sources, AI, and messages.</h1>
+				<p class="lede">Keep app credentials, LLM provider details, and messaging services in one place. These fields are prepared for the next encrypted settings upgrade.</p>
+			</div>
+			<div class="status-panel">
+				<strong>Coming next</strong>
+				<p>Saving, encryption, and test actions will be connected to the existing per-user credential store after you confirm the final provider list and Telegram flow.</p>
+			</div>
+		</section>
+
+		<section class="settings-grid" aria-label="OneHealth settings">
+			<form class="card">
+				<span class="eyebrow">Fitness sources</span>
+				<h2>Fitness apps and wearables</h2>
+				<p>Add API details for fitness apps, wearables, nutrition tools, and training platforms.</p>
+
+				<label for="fitness-provider">Service type</label>
+				<select id="fitness-provider" name="fitness-provider">
+					<option>Fitness app</option>
+					<option>Wearable</option>
+					<option>Nutrition tracker</option>
+					<option>Training platform</option>
+				</select>
+
+				<label for="fitness-name">App or device name</label>
+				<input id="fitness-name" name="fitness-name" placeholder="Cronometer, Strava, Garmin, Fitbit, Oura" autocomplete="off">
+
+				<label for="fitness-api">API key or token</label>
+				<textarea id="fitness-api" name="fitness-api" placeholder="Paste API key, access token, or refresh token"></textarea>
+
+				<div class="row">
+					<div>
+						<label for="fitness-username">Username</label>
+						<input id="fitness-username" name="fitness-username" placeholder="Optional username" autocomplete="username">
+					</div>
+					<div>
+						<label for="fitness-password">Password</label>
+						<input id="fitness-password" name="fitness-password" type="password" placeholder="Optional password" autocomplete="current-password">
+					</div>
+				</div>
+
+				<div class="helper">Use the Connections page for active integrations today. This settings box is reserved for the broader encrypted credential manager.</div>
+				<div class="card-actions">
+					<button class="button primary disabled" type="button" disabled>Save source details soon</button>
+				</div>
+			</form>
+
+			<form class="card">
+				<span class="eyebrow">AI insight provider</span>
+				<h2>LLM API details</h2>
+				<p>Bring your own model key for future nutrition and training insights.</p>
+
+				<label for="llm-provider">Provider</label>
+				<select id="llm-provider" name="llm-provider">
+					<option>OpenAI</option>
+					<option>Claude / Anthropic</option>
+					<option>Gemini</option>
+					<option>NVIDIA NIM</option>
+					<option>OpenRouter</option>
+					<option>Groq</option>
+					<option>Google AI Studio</option>
+				</select>
+
+				<label for="llm-api-key">API key</label>
+				<textarea id="llm-api-key" name="llm-api-key" placeholder="Paste your LLM API key"></textarea>
+
+				<div class="row">
+					<div>
+						<label for="llm-model">Model</label>
+						<input id="llm-model" name="llm-model" placeholder="gpt-4.1-mini, claude-3.5, llama, gemini" autocomplete="off">
+					</div>
+					<div>
+						<label for="llm-base-url">Base URL</label>
+						<input id="llm-base-url" name="llm-base-url" placeholder="Optional custom endpoint" autocomplete="off">
+					</div>
+				</div>
+
+				<div class="provider-list" aria-label="Supported LLM providers">
+					<span class="chip">OpenAI</span>
+					<span class="chip">Claude</span>
+					<span class="chip">Gemini</span>
+					<span class="chip">NVIDIA NIM</span>
+					<span class="chip">OpenRouter</span>
+					<span class="chip">Groq</span>
+					<span class="chip">Google AI Studio</span>
+				</div>
+				<div class="helper">LLM details will power future AI-generated insights. For now, no LLM keys are stored from this placeholder form.</div>
+				<div class="card-actions">
+					<button class="button primary disabled" type="button" disabled>Save LLM details soon</button>
+					<button class="button disabled" type="button" disabled>Test insight soon</button>
+				</div>
+			</form>
+
+			<form class="card">
+				<span class="eyebrow">Messaging</span>
+				<h2>Notification services</h2>
+				<p>Connect messaging channels for nutrition check-ins, summaries, and future AI insights.</p>
+
+				<label for="message-service">Messaging service</label>
+				<select id="message-service" name="message-service">
+					<option>Telegram</option>
+				</select>
+
+				<label for="telegram-status">Telegram</label>
+				<input id="telegram-status" name="telegram-status" value="Placeholder - deep-link bot connection coming soon" readonly>
+
+				<label for="message-frequency">Insight window</label>
+				<select id="message-frequency" name="message-frequency">
+					<option>Every 4 hours</option>
+					<option>Daily summary</option>
+					<option>Paused</option>
+				</select>
+
+				<div class="helper">Telegram will use a bot deep link instead of asking users to paste chat IDs. This keeps the setup simple and familiar.</div>
+				<div class="card-actions">
+					<button class="button primary disabled" type="button" disabled>Connect Telegram soon</button>
+					<button class="button disabled" type="button" disabled>Send test message soon</button>
+				</div>
+			</form>
+		</section>
+	</main>
+
+	<footer>
+		<div class="shell">
+			<span>OneHealth_MCP settings</span>
+			<span>Secrets will be encrypted before active storage is enabled.</span>
+		</div>
+	</footer>
+</body>
+</html>`;
+
+	return c.html(html);
+});
+
 utilityRoutes.get("/", (c) => {
 	const googleReady = Boolean(c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET);
 	const googleHeroButton = googleReady
@@ -779,9 +1194,11 @@ utilityRoutes.get("/", (c) => {
 				<a href="#sources">Sources</a>
 				<a href="#prompts">Prompts</a>
 				<a href="#pricing">Beta access</a>
+				<a href="/settings">Settings</a>
 			</div>
 			<div class="actions">
 				<a class="button" href="/health">Status</a>
+				<a class="button" href="/settings">Settings</a>
 				<a class="button" href="/connections">Sign in</a>
 				<a class="button primary" href="/signup">Sign up</a>
 			</div>
@@ -796,6 +1213,7 @@ utilityRoutes.get("/", (c) => {
 				<p class="lede">OneHealth_MCP turns workouts, nutrition, endurance, sleep, and recovery signals into one private MCP endpoint for Claude, ChatGPT, Claude Code, and other AI tools.</p>
 				<div class="actions">
 					<a class="button primary" href="/connections">Connect sources</a>
+					<a class="button" href="/settings">Open settings</a>
 					<a class="button" href="#how">See how it works</a>
 				</div>
 				<div class="auth-row" aria-label="Sign in options">
@@ -958,6 +1376,7 @@ utilityRoutes.get("/", (c) => {
 					</div>
 					<div class="actions">
 						<a class="button" href="/connections">Sign up with GitHub</a>
+						<a class="button" href="/settings">Open settings</a>
 						<a class="button google" href="/signup">Google option</a>
 					</div>
 				</div>
