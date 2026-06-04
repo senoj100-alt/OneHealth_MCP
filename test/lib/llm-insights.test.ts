@@ -122,12 +122,13 @@ describe("LLM nutrition insights", () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
-		expect(retryBody.max_completion_tokens).toBe(1400);
+		expect(retryBody.max_completion_tokens).toBe(1000);
 		expect(retryBody.include_reasoning).toBe(false);
-		expect(retryBody.messages[1].content).toContain('"vitaminD":80');
+		expect(retryBody.messages[1].content).toContain("nutrients.vitaminD=80");
 		expect(retryBody.messages[1].content).toContain(
-			"Complete nutrient totals are preserved",
+			"Nutrient values were prioritized",
 		);
-		expect(retryBody.messages[1].content.length).toBeLessThan(20000);
+		expect(retryBody.messages[1].content).not.toContain("x".repeat(500));
+		expect(retryBody.messages[1].content.length).toBeLessThan(14000);
 	});
 });

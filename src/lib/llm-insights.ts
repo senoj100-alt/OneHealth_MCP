@@ -55,9 +55,93 @@ function nutritionJson(nutrition: unknown, maximumLength: number): string {
 	return JSON.stringify(prioritized);
 }
 
+const GROQ_OMITTED_METADATA_KEYS = new Set([
+	"color",
+	"diaryGroup",
+	"foodId",
+	"icon",
+	"id",
+	"index",
+	"order",
+	"rank",
+	"servingId",
+	"sortOrder",
+	"visible",
+]);
+
+function flattenNutritionValues(
+	value: unknown,
+	path: string,
+	lines: string[],
+): void {
+	if (value === null || value === undefined) return;
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		const rendered =
+			typeof value === "string" && value.length > 160
+				? `${value.slice(0, 160)}...`
+				: String(value);
+		lines.push(`${path}=${rendered}`);
+		return;
+	}
+	if (Array.isArray(value)) {
+		value.forEach((item, index) =>
+			flattenNutritionValues(item, `${path}[${index}]`, lines),
+		);
+		return;
+	}
+	if (typeof value === "object") {
+		for (const [key, child] of Object.entries(
+			value as Record<string, unknown>,
+		)) {
+			if (GROQ_OMITTED_METADATA_KEYS.has(key)) continue;
+			flattenNutritionValues(child, path ? `${path}.${key}` : key, lines);
+		}
+	}
+}
+
+function compactGroqNutrition(
+	nutrition: unknown,
+	maximumLength: number,
+): string {
+	if (!nutrition || typeof nutrition !== "object" || Array.isArray(nutrition)) {
+		return nutritionJson(nutrition, maximumLength);
+	}
+	const source = nutrition as Record<string, unknown>;
+	const nutrientLines: string[] = [];
+	const summaryLines: string[] = [];
+	flattenNutritionValues(source.nutrients, "nutrients", nutrientLines);
+	flattenNutritionValues(source.summary, "summary", summaryLines);
+
+	const entryNames = (Array.isArray(source.entries) ? source.entries : [])
+		.map((entry) => {
+			if (!entry || typeof entry !== "object") return "";
+			const record = entry as Record<string, unknown>;
+			return String(
+				record.name ?? record.foodName ?? record.description ?? "",
+			).trim();
+		})
+		.filter(Boolean);
+	const sections = [
+		`date=${String(source.date ?? "")}`,
+		"COMPLETE NUTRIENT TOTALS, TARGETS, UNITS, AND PERCENTAGES:",
+		...nutrientLines,
+		"SUMMARY:",
+		...summaryLines,
+		"FOODS LOGGED (names only):",
+		...entryNames,
+		"Note: OneHealth removed Cronometer transport/display metadata and verbose food-entry fields to fit Groq's account token limit. Nutrient values were prioritized.",
+	];
+	return sections.join("\n").slice(0, maximumLength);
+}
+
 function nutritionPrompt(
 	input: NutritionInsightInput,
 	maximumNutritionLength = 50000,
+	compactForGroq = false,
 ): string {
 	return [
 		"You are OneHealth, a careful nutrition insight assistant.",
@@ -73,8 +157,10 @@ function nutritionPrompt(
 			: "User style/focus preferences: none provided.",
 		`Insight mode: ${input.mode}.`,
 		`Date: ${input.date}.`,
-		"Nutrition JSON:",
-		nutritionJson(input.nutrition, maximumNutritionLength),
+		compactForGroq ? "Compact nutrition data:" : "Nutrition JSON:",
+		compactForGroq
+			? compactGroqNutrition(input.nutrition, maximumNutritionLength)
+			: nutritionJson(input.nutrition, maximumNutritionLength),
 	].join("\n");
 }
 
@@ -120,6 +206,7 @@ async function callOpenAiCompatible(
 	const request = (
 		settings: AiRequestSettings,
 		maximumNutritionLength = 50000,
+		compactForGroq = false,
 	) =>
 		fetch(`${baseUrl}/chat/completions`, {
 			method: "POST",
@@ -138,7 +225,11 @@ async function callOpenAiCompatible(
 					},
 					{
 						role: "user",
-						content: nutritionPrompt(input, maximumNutritionLength),
+						content: nutritionPrompt(
+							input,
+							maximumNutritionLength,
+							compactForGroq,
+						),
 					},
 				],
 			}),
@@ -147,14 +238,14 @@ async function callOpenAiCompatible(
 	if (response.status === 413 && connection.provider === "groq") {
 		const fallbackSettings = { ...requestSettings };
 		delete fallbackSettings.max_tokens;
-		fallbackSettings.max_completion_tokens = 1400;
+		fallbackSettings.max_completion_tokens = 1000;
 		fallbackSettings.include_reasoning = false;
-		response = await request(fallbackSettings, 18000);
+		response = await request(fallbackSettings, 12000, true);
 	}
 	if (!response.ok) {
 		if (response.status === 413 && connection.provider === "groq") {
 			throw new Error(
-				"Groq rejected the request because it exceeds your account token limit even after OneHealth reduced redundant diary detail. Choose a model with a higher token limit or upgrade the Groq tier.",
+				"Groq rejected the compact nutrient request because your account token limit is too low for this day's nutrition data. Try a smaller Groq model, another connected AI provider, or upgrade the Groq tier.",
 			);
 		}
 		throw new Error(
