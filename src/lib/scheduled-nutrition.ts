@@ -1,8 +1,18 @@
 import type { Env } from "../app.js";
 import type { Props } from "../utils.js";
-import { getAiConnection, getAiPreference, listAiConnectionSummaries } from "./ai-connections.js";
-import { CronometerClient, KvCronometerSessionCache } from "./cronometer-client.js";
-import { generateBasicNutritionInsight, generateNutritionInsight } from "./llm-insights.js";
+import {
+	getAiConnection,
+	getAiPreference,
+	listAiConnectionSummaries,
+} from "./ai-connections.js";
+import {
+	CronometerClient,
+	KvCronometerSessionCache,
+} from "./cronometer-client.js";
+import {
+	generateBasicNutritionInsight,
+	generateNutritionInsight,
+} from "./llm-insights.js";
 import {
 	type DueNotificationSchedule,
 	getNotificationSchedule,
@@ -12,9 +22,10 @@ import {
 	markNotificationSlotSent,
 } from "./notifications.js";
 import { getServiceConnection } from "./service-connections.js";
-import { escapeTelegramHtml, sendTelegramMessage } from "./telegram.js";
+import { sendLongTelegramMessage } from "./telegram.js";
 
-const TELEGRAM_SAFETY_FOOTER = "Not medical advice. Consult a qualified professional for health or nutrition decisions.";
+const TELEGRAM_SAFETY_FOOTER =
+	"Not medical advice. Consult a qualified professional for health or nutrition decisions.";
 type InsightSession = Pick<Props, "login" | "name" | "email">;
 
 function sessionForDueSchedule(schedule: DueNotificationSchedule) {
@@ -27,7 +38,10 @@ function sessionForDueSchedule(schedule: DueNotificationSchedule) {
 }
 
 function dateForInsight(
-	schedule: Pick<DueNotificationSchedule, "localDate" | "dueTime" | "insightMode">,
+	schedule: Pick<
+		DueNotificationSchedule,
+		"localDate" | "dueTime" | "insightMode"
+	>,
 ): string {
 	if (schedule.insightMode === "previous_day") {
 		const date = new Date(`${schedule.localDate}T00:00:00Z`);
@@ -48,7 +62,11 @@ async function getCronometerNutrition(
 	timezone: string,
 	date: string,
 ): Promise<unknown> {
-	const connection = await getServiceConnection<Record<string, string>>(env, session, "cronometer");
+	const connection = await getServiceConnection<Record<string, string>>(
+		env,
+		session,
+		"cronometer",
+	);
 	const username = connection?.credentials.username || env.CRONOMETER_USERNAME;
 	const password = connection?.credentials.password || env.CRONOMETER_PASSWORD;
 	const client = new CronometerClient({
@@ -66,7 +84,10 @@ async function getPreferredAiConnection(env: Env, session: InsightSession) {
 		getAiPreference(env, session),
 	]);
 	const preferred = preference
-		? summaries.find((summary) => summary.provider === preference.defaultProvider && summary.enabled)
+		? summaries.find(
+				(summary) =>
+					summary.provider === preference.defaultProvider && summary.enabled,
+			)
 		: undefined;
 	const fallback = summaries.find((summary) => summary.enabled) ?? summaries[0];
 	const selected = preferred ?? fallback;
@@ -74,7 +95,10 @@ async function getPreferredAiConnection(env: Env, session: InsightSession) {
 	return getAiConnection(env, session, selected.provider);
 }
 
-async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): Promise<void> {
+async function processDueSchedule(
+	env: Env,
+	schedule: DueNotificationSchedule,
+): Promise<void> {
 	const session = sessionForDueSchedule(schedule);
 	const telegram = await getTelegramConnection(env, session);
 	if (!telegram?.externalUserId || !telegram.enabled) {
@@ -91,7 +115,12 @@ async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): 
 	}
 
 	const date = dateForInsight(schedule);
-	const nutrition = await getCronometerNutrition(env, session, schedule.timezone, date);
+	const nutrition = await getCronometerNutrition(
+		env,
+		session,
+		schedule.timezone,
+		date,
+	);
 	const aiConnection = await getPreferredAiConnection(env, session);
 	const insight = aiConnection
 		? await generateNutritionInsight(aiConnection, {
@@ -106,12 +135,13 @@ async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): 
 				nutrition,
 				promptInstructions: schedule.promptInstructions,
 			});
-	const title = schedule.insightMode === "previous_day" || date < schedule.localDate
-		? "OneHealth previous day nutrition"
-		: "OneHealth nutrition check-in";
-	await sendTelegramMessage(env, {
+	const title =
+		schedule.insightMode === "previous_day" || date < schedule.localDate
+			? "OneHealth previous day nutrition"
+			: "OneHealth nutrition check-in";
+	await sendLongTelegramMessage(env, {
 		chatId: telegram.externalUserId,
-		text: `<b>${escapeTelegramHtml(title)}</b>\n\n${escapeTelegramHtml(insight)}\n\n${escapeTelegramHtml(TELEGRAM_SAFETY_FOOTER)}`,
+		text: `${title}\n\n${insight}\n\n${TELEGRAM_SAFETY_FOOTER}`,
 	});
 	await markNotificationSlotSent(env, schedule.userId, schedule.slotKey);
 	await logNotification(env, {
@@ -123,7 +153,10 @@ async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): 
 	});
 }
 
-function localDateAndTime(timezone: string, now = new Date()): { date: string; time: string } {
+function localDateAndTime(
+	timezone: string,
+	now = new Date(),
+): { date: string; time: string } {
 	const parts = new Intl.DateTimeFormat("en-CA", {
 		timeZone: timezone,
 		year: "numeric",
@@ -133,7 +166,8 @@ function localDateAndTime(timezone: string, now = new Date()): { date: string; t
 		minute: "2-digit",
 		hourCycle: "h23",
 	}).formatToParts(now);
-	const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+	const get = (type: string) =>
+		parts.find((part) => part.type === type)?.value ?? "";
 	return {
 		date: `${get("year")}-${get("month")}-${get("day")}`,
 		time: `${get("hour")}:${get("minute")}`,
@@ -150,7 +184,9 @@ export async function sendTestNutritionInsight(
 		getNotificationSchedule(env, session),
 	]);
 	if (!telegram?.externalUserId || !telegram.enabled) {
-		throw new Error("Telegram is not connected. Connect Telegram before sending a test insight.");
+		throw new Error(
+			"Telegram is not connected. Connect Telegram before sending a test insight.",
+		);
 	}
 	const timezone = schedule?.timezone ?? "America/New_York";
 	const local = localDateAndTime(timezone, now);
@@ -172,13 +208,16 @@ export async function sendTestNutritionInsight(
 	const insight = aiConnection
 		? await generateNutritionInsight(aiConnection, insightInput)
 		: generateBasicNutritionInsight(insightInput);
-	await sendTelegramMessage(env, {
+	await sendLongTelegramMessage(env, {
 		chatId: telegram.externalUserId,
-		text: `<b>OneHealth test nutrition insight</b>\n\n${escapeTelegramHtml(insight)}\n\n${escapeTelegramHtml(TELEGRAM_SAFETY_FOOTER)}`,
+		text: `OneHealth test nutrition insight\n\n${insight}\n\n${TELEGRAM_SAFETY_FOOTER}`,
 	});
 }
 
-export async function processNutritionNotifications(env: Env, now = new Date()): Promise<{ processed: number; failed: number }> {
+export async function processNutritionNotifications(
+	env: Env,
+	now = new Date(),
+): Promise<{ processed: number; failed: number }> {
 	const due = await listDueNutritionSchedules(env, now);
 	let processed = 0;
 	let failed = 0;

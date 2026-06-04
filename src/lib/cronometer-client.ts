@@ -26,7 +26,10 @@ export class KvCronometerSessionCache implements CronometerSessionCache {
 	}
 
 	async get(username: string): Promise<CronometerSession | null> {
-		const session = await this.kv.get<CronometerSession>(this.key(username), "json");
+		const session = await this.kv.get<CronometerSession>(
+			this.key(username),
+			"json",
+		);
 		if (
 			!session ||
 			typeof session.userId !== "number" ||
@@ -80,7 +83,11 @@ export class CronometerClient {
 		password: string;
 		timezone: string;
 	} {
-		const { username, password, timezone = "America/New_York" } = this.credentials;
+		const {
+			username,
+			password,
+			timezone = "America/New_York",
+		} = this.credentials;
 		if (!username || !password) {
 			throw new Error(
 				"Cronometer is not configured. Set CRONOMETER_USERNAME and CRONOMETER_PASSWORD as Worker secrets.",
@@ -235,17 +242,20 @@ export class CronometerClient {
 			await this.login();
 		}
 
-		const response = await fetch(`${this.baseUrl}/api/v3/user/${this.userId}${path}`, {
-			method,
-			headers: {
-				"x-crono-session": this.token ?? "",
-				"x-crono-app-os": "android",
-				"x-crono-app-build-number": "2807",
-				"x-crono-app-version": "4.48.2",
-				"Content-Type": "application/json; charset=utf-8",
+		const response = await fetch(
+			`${this.baseUrl}/api/v3/user/${this.userId}${path}`,
+			{
+				method,
+				headers: {
+					"x-crono-session": this.token ?? "",
+					"x-crono-app-os": "android",
+					"x-crono-app-build-number": "2807",
+					"x-crono-app-version": "4.48.2",
+					"Content-Type": "application/json; charset=utf-8",
+				},
+				body: jsonBody ? JSON.stringify(jsonBody) : undefined,
 			},
-			body: jsonBody ? JSON.stringify(jsonBody) : undefined,
-		});
+		);
 
 		if ((response.status === 401 || response.status === 403) && !retried) {
 			this.token = undefined;
@@ -258,16 +268,19 @@ export class CronometerClient {
 	}
 
 	async searchFood(query: string): Promise<unknown[]> {
-		const data = await this.request<{ foods?: unknown[] }>("/api/v2/find_food", {
-			query,
-			tab: "ALL",
-			sources: ["All"],
-			config: {
-				newSearch: true,
-				newSpellcheck: true,
-				call_version: 1,
+		const data = await this.request<{ foods?: unknown[] }>(
+			"/api/v2/find_food",
+			{
+				query,
+				tab: "ALL",
+				sources: ["All"],
+				config: {
+					newSearch: true,
+					newSpellcheck: true,
+					call_version: 1,
+				},
 			},
-		});
+		);
 		return data.foods ?? [];
 	}
 
@@ -319,18 +332,42 @@ export class CronometerClient {
 				],
 				labelType: "AMERICAN_2016",
 				nutrients: [
-					{ id: NUTRIENT_IDS.energy, amount: Math.round(args.calories * scale * 100) / 100 },
-					{ id: NUTRIENT_IDS.protein, amount: Math.round(args.proteinG * scale * 100) / 100 },
-					{ id: NUTRIENT_IDS.fat, amount: Math.round(args.fatG * scale * 100) / 100 },
-					{ id: NUTRIENT_IDS.carbs, amount: Math.round(args.carbsG * scale * 100) / 100 },
-					{ id: NUTRIENT_IDS.fiber, amount: Math.round(fiber * scale * 100) / 100 },
-					{ id: NUTRIENT_IDS.sugar, amount: Math.round(sugar * scale * 100) / 100 },
-					{ id: NUTRIENT_IDS.sodium, amount: Math.round(sodium * scale * 100) / 100 },
+					{
+						id: NUTRIENT_IDS.energy,
+						amount: Math.round(args.calories * scale * 100) / 100,
+					},
+					{
+						id: NUTRIENT_IDS.protein,
+						amount: Math.round(args.proteinG * scale * 100) / 100,
+					},
+					{
+						id: NUTRIENT_IDS.fat,
+						amount: Math.round(args.fatG * scale * 100) / 100,
+					},
+					{
+						id: NUTRIENT_IDS.carbs,
+						amount: Math.round(args.carbsG * scale * 100) / 100,
+					},
+					{
+						id: NUTRIENT_IDS.fiber,
+						amount: Math.round(fiber * scale * 100) / 100,
+					},
+					{
+						id: NUTRIENT_IDS.sugar,
+						amount: Math.round(sugar * scale * 100) / 100,
+					},
+					{
+						id: NUTRIENT_IDS.sodium,
+						amount: Math.round(sodium * scale * 100) / 100,
+					},
 					{ id: -203, amount: Math.round(args.proteinG * scale * 100) / 100 },
 					{ id: -204, amount: Math.round(args.fatG * scale * 100) / 100 },
 					{ id: -205, amount: Math.round(args.carbsG * scale * 100) / 100 },
 					{ id: -221, amount: 0 },
-					{ id: NUTRIENT_IDS.netCarbs, amount: Math.round(netCarbs * scale * 100) / 100 },
+					{
+						id: NUTRIENT_IDS.netCarbs,
+						amount: Math.round(netCarbs * scale * 100) / 100,
+					},
 				],
 				properties: {},
 				foodTags: [],
@@ -358,9 +395,10 @@ export class CronometerClient {
 			await this.login();
 		}
 		const now = new Date();
-		const diaryGroup = args.diaryGroup && args.diaryGroup > 0
-			? args.diaryGroup
-			: this.mealGroupForHour(now.getHours());
+		const diaryGroup =
+			args.diaryGroup && args.diaryGroup > 0
+				? args.diaryGroup
+				: this.mealGroupForHour(now.getHours());
 		const serving = {
 			order: (diaryGroup << 16) | 1,
 			day: this.formatDay(args.date),
@@ -390,7 +428,9 @@ export class CronometerClient {
 	}
 
 	async deleteEntries(entryIds: string[], date?: string): Promise<unknown> {
-		const diaryData = await this.getDiary(date) as { diary?: Array<Record<string, unknown>> };
+		const diaryData = (await this.getDiary(date)) as {
+			diary?: Array<Record<string, unknown>>;
+		};
 		const idSet = new Set(entryIds.map(String));
 		const toDelete = (diaryData.diary ?? []).filter((entry) =>
 			idSet.has(String(entry.servingId)),
@@ -446,17 +486,23 @@ export class CronometerClient {
 			summary?: Record<string, unknown>;
 			diary?: unknown[];
 		};
+		const nutrients = await this.getNutrients(date);
 		return {
 			date: date ?? new Date().toISOString().slice(0, 10),
 			summary: diary.summary ?? null,
+			nutrients,
 			entries: diary.diary ?? [],
 		};
 	}
 
 	async getNutritionScores(date?: string): Promise<unknown> {
-		const diaryData = await this.getDiary(date) as { diary?: Array<Record<string, unknown>> };
+		const diaryData = (await this.getDiary(date)) as {
+			diary?: Array<Record<string, unknown>>;
+		};
 		const servingIds = (diaryData.diary ?? [])
-			.filter((entry) => entry.type === "Serving" && entry.servingId !== undefined)
+			.filter(
+				(entry) => entry.type === "Serving" && entry.servingId !== undefined,
+			)
 			.map((entry) => entry.servingId);
 
 		return this.request("/api/v2/get_nutrition_scores", {
@@ -481,7 +527,10 @@ export class CronometerClient {
 		return { schedules, templates };
 	}
 
-	async getFastingHistory(startDate?: string, endDate?: string): Promise<unknown> {
+	async getFastingHistory(
+		startDate?: string,
+		endDate?: string,
+	): Promise<unknown> {
 		const end = endDate ?? new Date().toISOString().slice(0, 10);
 		const start = startDate ?? this.offsetDay(end, -30);
 		return this.request("/api/v2/get_fasting_with_date_range", {

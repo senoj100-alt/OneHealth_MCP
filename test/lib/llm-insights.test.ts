@@ -26,16 +26,14 @@ afterEach(() => {
 
 describe("LLM nutrition insights", () => {
 	it("uses Groq GPT-OSS reasoning-safe request defaults", async () => {
-		const fetchMock = vi
-			.spyOn(globalThis, "fetch")
-			.mockResolvedValue(
-				new Response(
-					JSON.stringify({
-						choices: [{ message: { content: "Useful insight" } }],
-					}),
-					{ status: 200 },
-				),
-			);
+		const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					choices: [{ message: { content: "Useful insight" } }],
+				}),
+				{ status: 200 },
+			),
+		);
 
 		await generateNutritionInsight(connection(), INPUT);
 
@@ -43,7 +41,7 @@ describe("LLM nutrition insights", () => {
 		expect(body).toMatchObject({
 			model: "openai/gpt-oss-120b",
 			include_reasoning: false,
-			max_completion_tokens: 1200,
+			max_completion_tokens: 3000,
 		});
 		expect(body.max_tokens).toBeUndefined();
 	});

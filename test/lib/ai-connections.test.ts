@@ -29,7 +29,7 @@ describe("AI request settings", () => {
 		expect(recommendedAiRequestSettings("groq", "openai/gpt-oss-120b")).toEqual(
 			{
 				include_reasoning: false,
-				max_completion_tokens: 1200,
+				max_completion_tokens: 3000,
 			},
 		);
 	});
