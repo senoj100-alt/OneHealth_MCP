@@ -1,9 +1,11 @@
 import type { Env } from "../app.js";
+import type { Props } from "../utils.js";
 import { getAiConnection, getAiPreference, listAiConnectionSummaries } from "./ai-connections.js";
 import { CronometerClient, KvCronometerSessionCache } from "./cronometer-client.js";
 import { generateBasicNutritionInsight, generateNutritionInsight } from "./llm-insights.js";
 import {
 	type DueNotificationSchedule,
+	getNotificationSchedule,
 	getTelegramConnection,
 	listDueNutritionSchedules,
 	logNotification,
@@ -13,6 +15,7 @@ import { getServiceConnection } from "./service-connections.js";
 import { escapeTelegramHtml, sendTelegramMessage } from "./telegram.js";
 
 const TELEGRAM_SAFETY_FOOTER = "Not medical advice. Consult a qualified professional for health or nutrition decisions.";
+type InsightSession = Pick<Props, "login" | "name" | "email">;
 
 function sessionForDueSchedule(schedule: DueNotificationSchedule) {
 	return {
@@ -23,7 +26,9 @@ function sessionForDueSchedule(schedule: DueNotificationSchedule) {
 	};
 }
 
-function dateForInsight(schedule: DueNotificationSchedule): string {
+function dateForInsight(
+	schedule: Pick<DueNotificationSchedule, "localDate" | "dueTime" | "insightMode">,
+): string {
 	if (schedule.insightMode === "previous_day") {
 		const date = new Date(`${schedule.localDate}T00:00:00Z`);
 		date.setUTCDate(date.getUTCDate() - 1);
@@ -37,22 +42,25 @@ function dateForInsight(schedule: DueNotificationSchedule): string {
 	return schedule.localDate;
 }
 
-async function getCronometerNutrition(env: Env, schedule: DueNotificationSchedule, date: string): Promise<unknown> {
-	const session = sessionForDueSchedule(schedule);
+async function getCronometerNutrition(
+	env: Env,
+	session: InsightSession,
+	timezone: string,
+	date: string,
+): Promise<unknown> {
 	const connection = await getServiceConnection<Record<string, string>>(env, session, "cronometer");
 	const username = connection?.credentials.username || env.CRONOMETER_USERNAME;
 	const password = connection?.credentials.password || env.CRONOMETER_PASSWORD;
 	const client = new CronometerClient({
 		username,
 		password,
-		timezone: schedule.timezone,
+		timezone,
 		sessionCache: new KvCronometerSessionCache(env.OAUTH_KV),
 	});
 	return client.getDailyNutrition(date);
 }
 
-async function getPreferredAiConnection(env: Env, schedule: DueNotificationSchedule) {
-	const session = sessionForDueSchedule(schedule);
+async function getPreferredAiConnection(env: Env, session: InsightSession) {
 	const [summaries, preference] = await Promise.all([
 		listAiConnectionSummaries(env, session),
 		getAiPreference(env, session),
@@ -83,8 +91,8 @@ async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): 
 	}
 
 	const date = dateForInsight(schedule);
-	const nutrition = await getCronometerNutrition(env, schedule, date);
-	const aiConnection = await getPreferredAiConnection(env, schedule);
+	const nutrition = await getCronometerNutrition(env, session, schedule.timezone, date);
+	const aiConnection = await getPreferredAiConnection(env, session);
 	const insight = aiConnection
 		? await generateNutritionInsight(aiConnection, {
 				date,
@@ -112,6 +120,61 @@ async function processDueSchedule(env: Env, schedule: DueNotificationSchedule): 
 		topic: "nutrition",
 		scheduledFor: schedule.slotKey,
 		status: "sent",
+	});
+}
+
+function localDateAndTime(timezone: string, now = new Date()): { date: string; time: string } {
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: timezone,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	}).formatToParts(now);
+	const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+	return {
+		date: `${get("year")}-${get("month")}-${get("day")}`,
+		time: `${get("hour")}:${get("minute")}`,
+	};
+}
+
+export async function sendTestNutritionInsight(
+	env: Env,
+	session: InsightSession,
+	now = new Date(),
+): Promise<void> {
+	const [telegram, schedule] = await Promise.all([
+		getTelegramConnection(env, session),
+		getNotificationSchedule(env, session),
+	]);
+	if (!telegram?.externalUserId || !telegram.enabled) {
+		throw new Error("Telegram is not connected. Connect Telegram before sending a test insight.");
+	}
+	const timezone = schedule?.timezone ?? "America/New_York";
+	const local = localDateAndTime(timezone, now);
+	const insightMode = schedule?.insightMode ?? "today_so_far";
+	const testSchedule = {
+		localDate: local.date,
+		dueTime: local.time,
+		insightMode,
+	};
+	const date = dateForInsight(testSchedule);
+	const nutrition = await getCronometerNutrition(env, session, timezone, date);
+	const aiConnection = await getPreferredAiConnection(env, session);
+	const insightInput = {
+		date,
+		mode: insightMode,
+		nutrition,
+		promptInstructions: schedule?.promptInstructions,
+	};
+	const insight = aiConnection
+		? await generateNutritionInsight(aiConnection, insightInput)
+		: generateBasicNutritionInsight(insightInput);
+	await sendTelegramMessage(env, {
+		chatId: telegram.externalUserId,
+		text: `<b>OneHealth test nutrition insight</b>\n\n${escapeTelegramHtml(insight)}\n\n${escapeTelegramHtml(TELEGRAM_SAFETY_FOOTER)}`,
 	});
 }
 

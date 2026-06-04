@@ -21,6 +21,7 @@ import {
 	upsertNotificationSchedule,
 	upsertTelegramConnection,
 } from "../lib/notifications.js";
+import { sendTestNutritionInsight } from "../lib/scheduled-nutrition.js";
 import { getOneHealthServiceStatuses } from "../lib/service-registry.js";
 import { sendTelegramMessage } from "../lib/telegram.js";
 import type { Props } from "../utils.js";
@@ -1093,6 +1094,7 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 			<div class="actions">
 				<button type="button" id="addTime">Add time</button>
 				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save schedule</button>
+				<button type="button" id="sendTestInsight" ${session ? "" : "disabled"}>Send test nutrition insight now</button>
 			</div>
 			<div class="helper">Instructions guide style and focus only. Every Telegram insight still includes a medical-advice disclaimer.</div>
 			<div id="message"></div>
@@ -1137,6 +1139,15 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 			});
 			const data = await response.json().catch(() => ({}));
 			document.getElementById("message").textContent = response.ok ? "Saved notification schedule." : (data.error || "Could not save schedule.");
+		});
+		document.getElementById("sendTestInsight")?.addEventListener("click", async (event) => {
+			const button = event.currentTarget;
+			button.disabled = true;
+			document.getElementById("message").textContent = "Generating and sending test insight...";
+			const response = await fetch("/api/telegram/test-nutrition-insight", { method: "POST" });
+			const data = await response.json().catch(() => ({}));
+			document.getElementById("message").textContent = response.ok ? "Test nutrition insight sent to Telegram." : (data.error || "Could not send test insight.");
+			button.disabled = false;
 		});
 	</script>`;
 	return c.html(settingsShell(service.label, body));
@@ -1227,6 +1238,19 @@ utilityRoutes.post("/api/telegram/link-code", async (c) => {
 	const code = await createTelegramLinkCode(c.env, session);
 	const botUrl = `https://t.me/${encodeURIComponent(c.env.TELEGRAM_BOT_USERNAME)}?start=${encodeURIComponent(code)}`;
 	return c.json({ code, botUrl, expiresInSeconds: 600 });
+});
+
+utilityRoutes.post("/api/telegram/test-nutrition-insight", async (c) => {
+	const session = await getSettingsSession(c);
+	if (!session) return c.json({ error: "Unauthorized" }, 401);
+	try {
+		await sendTestNutritionInsight(c.env, session);
+		return c.json({ success: true, message: "Test nutrition insight sent to Telegram." });
+	} catch (error) {
+		console.error("Test nutrition insight failed:", error);
+		const message = error instanceof Error ? error.message : "Could not send test nutrition insight.";
+		return c.json({ error: message.slice(0, 500) }, 400);
+	}
 });
 
 utilityRoutes.post("/api/telegram/webhook", async (c) => {
