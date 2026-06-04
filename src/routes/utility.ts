@@ -1142,7 +1142,7 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 			if (provider !== "groq" || !modelInput.value.trim().toLowerCase().startsWith("openai/gpt-oss-")) return;
 			const current = requestSettingsInput.value.trim();
 			if (!current || current === "{}") {
-				requestSettingsInput.value = JSON.stringify({ include_reasoning: false, max_completion_tokens: 3000 }, null, 2);
+				requestSettingsInput.value = JSON.stringify({ include_reasoning: false, max_completion_tokens: 1800 }, null, 2);
 			}
 		});
 	</script>`;

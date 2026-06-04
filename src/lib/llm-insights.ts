@@ -26,7 +26,39 @@ function trimSlash(value: string): string {
 	return value.replace(/\/+$/, "");
 }
 
-function nutritionPrompt(input: NutritionInsightInput): string {
+function nutritionJson(nutrition: unknown, maximumLength: number): string {
+	const full = JSON.stringify(nutrition);
+	if (full.length <= maximumLength) return full;
+	if (!nutrition || typeof nutrition !== "object" || Array.isArray(nutrition)) {
+		return full.slice(0, maximumLength);
+	}
+
+	const source = nutrition as Record<string, unknown>;
+	const prioritized: Record<string, unknown> = {
+		date: source.date,
+		summary: source.summary,
+		nutrients: source.nutrients,
+	};
+	const entries = Array.isArray(source.entries) ? source.entries : [];
+	prioritized.entries = [];
+	prioritized.entries_note =
+		"Some detailed food-entry fields were omitted to fit the provider request limit. Complete nutrient totals are preserved.";
+
+	for (const entry of entries) {
+		const candidate = {
+			...prioritized,
+			entries: [...(prioritized.entries as unknown[]), entry],
+		};
+		if (JSON.stringify(candidate).length > maximumLength) break;
+		prioritized.entries = candidate.entries;
+	}
+	return JSON.stringify(prioritized);
+}
+
+function nutritionPrompt(
+	input: NutritionInsightInput,
+	maximumNutritionLength = 50000,
+): string {
 	return [
 		"You are OneHealth, a careful nutrition insight assistant.",
 		"Write a thorough nutrition analysis using clear headings and plain language.",
@@ -42,7 +74,7 @@ function nutritionPrompt(input: NutritionInsightInput): string {
 		`Insight mode: ${input.mode}.`,
 		`Date: ${input.date}.`,
 		"Nutrition JSON:",
-		JSON.stringify(input.nutrition).slice(0, 50000),
+		nutritionJson(input.nutrition, maximumNutritionLength),
 	].join("\n");
 }
 
@@ -85,26 +117,46 @@ async function callOpenAiCompatible(
 		connection.baseUrl || DEFAULT_BASE_URLS[connection.provider],
 	);
 	const requestSettings = openAiRequestSettings(connection);
-	const response = await fetch(`${baseUrl}/chat/completions`, {
-		method: "POST",
-		headers: {
-			Authorization: `Bearer ${connection.apiKey}`,
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({
-			...requestSettings,
-			model: connection.modelName,
-			messages: [
-				{
-					role: "system",
-					content:
-						"You produce safe, thorough, non-medical nutrition insights for consumer wellness software.",
-				},
-				{ role: "user", content: nutritionPrompt(input) },
-			],
-		}),
-	});
+	const request = (
+		settings: AiRequestSettings,
+		maximumNutritionLength = 50000,
+	) =>
+		fetch(`${baseUrl}/chat/completions`, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${connection.apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				...settings,
+				model: connection.modelName,
+				messages: [
+					{
+						role: "system",
+						content:
+							"You produce safe, thorough, non-medical nutrition insights for consumer wellness software.",
+					},
+					{
+						role: "user",
+						content: nutritionPrompt(input, maximumNutritionLength),
+					},
+				],
+			}),
+		});
+	let response = await request(requestSettings);
+	if (response.status === 413 && connection.provider === "groq") {
+		const fallbackSettings = { ...requestSettings };
+		delete fallbackSettings.max_tokens;
+		fallbackSettings.max_completion_tokens = 1400;
+		fallbackSettings.include_reasoning = false;
+		response = await request(fallbackSettings, 18000);
+	}
 	if (!response.ok) {
+		if (response.status === 413 && connection.provider === "groq") {
+			throw new Error(
+				"Groq rejected the request because it exceeds your account token limit even after OneHealth reduced redundant diary detail. Choose a model with a higher token limit or upgrade the Groq tier.",
+			);
+		}
 		throw new Error(
 			`LLM request failed (${response.status}): ${(await response.text()).slice(0, 500)}`,
 		);

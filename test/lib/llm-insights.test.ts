@@ -41,7 +41,7 @@ describe("LLM nutrition insights", () => {
 		expect(body).toMatchObject({
 			model: "openai/gpt-oss-120b",
 			include_reasoning: false,
-			max_completion_tokens: 3000,
+			max_completion_tokens: 1800,
 		});
 		expect(body.max_tokens).toBeUndefined();
 	});
@@ -76,5 +76,58 @@ describe("LLM nutrition insights", () => {
 		await expect(generateNutritionInsight(connection(), INPUT)).rejects.toThrow(
 			"Increase max_completion_tokens or disable reasoning",
 		);
+	});
+
+	it("retries Groq token-limit failures while preserving nutrient totals", async () => {
+		const fetchMock = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						error: {
+							message: "Limit 8000, Requested 8706",
+							type: "tokens",
+							code: "rate_limit_exceeded",
+						},
+					}),
+					{ status: 413 },
+				),
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						choices: [{ message: { content: "Full nutrient insight" } }],
+					}),
+					{ status: 200 },
+				),
+			);
+		const nutrition = {
+			date: "2026-06-03",
+			summary: { calories: 2200 },
+			nutrients: { vitaminD: 80, iron: 90, sugar: 45 },
+			entries: Array.from({ length: 200 }, (_, index) => ({
+				name: `Food ${index}`,
+				detail: "x".repeat(500),
+			})),
+		};
+
+		await expect(
+			generateNutritionInsight(
+				connection({
+					requestSettings: { max_completion_tokens: 3000 },
+				}),
+				{ ...INPUT, nutrition },
+			),
+		).resolves.toBe("Full nutrient insight");
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+		expect(retryBody.max_completion_tokens).toBe(1400);
+		expect(retryBody.include_reasoning).toBe(false);
+		expect(retryBody.messages[1].content).toContain('"vitaminD":80');
+		expect(retryBody.messages[1].content).toContain(
+			"Complete nutrient totals are preserved",
+		);
+		expect(retryBody.messages[1].content.length).toBeLessThan(20000);
 	});
 });

@@ -122,10 +122,10 @@ export function recommendedAiRequestSettings(
 ): AiRequestSettings {
 	const model = modelName.trim().toLowerCase();
 	if (provider === "groq" && model.startsWith("openai/gpt-oss-")) {
-		return { include_reasoning: false, max_completion_tokens: 3000 };
+		return { include_reasoning: false, max_completion_tokens: 1800 };
 	}
 	if (provider === "groq" && model.startsWith("qwen/qwen3")) {
-		return { reasoning_format: "hidden", max_completion_tokens: 3000 };
+		return { reasoning_format: "hidden", max_completion_tokens: 1800 };
 	}
 	return {};
 }
