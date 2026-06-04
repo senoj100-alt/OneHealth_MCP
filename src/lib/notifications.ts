@@ -4,6 +4,7 @@ import { ensureUser } from "./service-connections.js";
 export type MessagingChannel = "telegram";
 export type NotificationTopic = "nutrition";
 export type InsightMode = "today_so_far" | "previous_day" | "smart";
+export const PROMPT_INSTRUCTIONS_LIMIT = 1000;
 
 export interface NotificationEnv {
 	ONEHEALTH_DB: D1Database;
@@ -53,7 +54,10 @@ export function normalizeNotificationTimes(times: unknown): string[] {
 }
 
 export function normalizeTimezone(timezone: unknown): string {
-	const value = typeof timezone === "string" && timezone.trim() ? timezone.trim() : "America/New_York";
+	const value =
+		typeof timezone === "string" && timezone.trim()
+			? timezone.trim()
+			: "America/New_York";
 	try {
 		new Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
 		return value;
@@ -63,15 +67,18 @@ export function normalizeTimezone(timezone: unknown): string {
 }
 
 export function normalizeInsightMode(mode: unknown): InsightMode {
-	if (mode === "today_so_far" || mode === "previous_day" || mode === "smart") return mode;
+	if (mode === "today_so_far" || mode === "previous_day" || mode === "smart")
+		return mode;
 	return "smart";
 }
 
-export function normalizePromptInstructions(value: unknown): string | undefined {
+export function normalizePromptInstructions(
+	value: unknown,
+): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	if (!trimmed) return undefined;
-	return trimmed.slice(0, 1000);
+	return trimmed.slice(0, PROMPT_INSTRUCTIONS_LIMIT);
 }
 
 export async function getTelegramConnection(
@@ -140,7 +147,9 @@ export async function createTelegramLinkCode(
 ): Promise<string> {
 	const userId = await ensureUser(env, session);
 	const bytes = crypto.getRandomValues(new Uint8Array(9));
-	const code = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+	const code = Array.from(bytes, (byte) =>
+		byte.toString(16).padStart(2, "0"),
+	).join("");
 	const expiresAt = Math.floor(Date.now() / 1000) + 10 * 60;
 	await env.ONEHEALTH_DB.prepare(
 		"INSERT INTO telegram_link_codes (code, user_id, expires_at) VALUES (?, ?, ?)",
@@ -161,7 +170,8 @@ export async function consumeTelegramLinkCode(
 	)
 		.bind(code)
 		.first<{ user_id: string; expires_at: number; used_at: string | null }>();
-	if (!row || row.used_at || row.expires_at < Math.floor(Date.now() / 1000)) return null;
+	if (!row || row.used_at || row.expires_at < Math.floor(Date.now() / 1000))
+		return null;
 	await env.ONEHEALTH_DB.prepare(
 		"UPDATE telegram_link_codes SET used_at = ? WHERE code = ?",
 	)
@@ -245,7 +255,10 @@ export async function upsertNotificationSchedule(
 		.run();
 }
 
-function localParts(now: Date, timezone: string): { date: string; time: string } {
+function localParts(
+	now: Date,
+	timezone: string,
+): { date: string; time: string } {
 	const parts = new Intl.DateTimeFormat("en-CA", {
 		timeZone: timezone,
 		year: "numeric",
@@ -255,14 +268,19 @@ function localParts(now: Date, timezone: string): { date: string; time: string }
 		minute: "2-digit",
 		hourCycle: "h23",
 	}).formatToParts(now);
-	const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+	const get = (type: string) =>
+		parts.find((part) => part.type === type)?.value ?? "";
 	return {
 		date: `${get("year")}-${get("month")}-${get("day")}`,
 		time: `${get("hour")}:${get("minute")}`,
 	};
 }
 
-function isWithinCronWindow(localTime: string, scheduledTime: string, windowMinutes = 15): boolean {
+function isWithinCronWindow(
+	localTime: string,
+	scheduledTime: string,
+	windowMinutes = 15,
+): boolean {
 	const [nowHour, nowMinute] = localTime.split(":").map(Number);
 	const [slotHour, slotMinute] = scheduledTime.split(":").map(Number);
 	const nowTotal = nowHour * 60 + nowMinute;
@@ -302,8 +320,13 @@ export async function listDueNutritionSchedules(
 	for (const row of results ?? []) {
 		const timezone = normalizeTimezone(row.timezone);
 		const parts = localParts(now, timezone);
-		const times = normalizeNotificationTimes(JSON.parse(row.times_json || "[]"));
-		const lastSent = JSON.parse(row.last_sent_json || "{}") as Record<string, string>;
+		const times = normalizeNotificationTimes(
+			JSON.parse(row.times_json || "[]"),
+		);
+		const lastSent = JSON.parse(row.last_sent_json || "{}") as Record<
+			string,
+			string
+		>;
 		for (const time of times) {
 			if (!isWithinCronWindow(parts.time, time)) continue;
 			const slotKey = `${parts.date}:${time}`;
@@ -319,7 +342,9 @@ export async function listDueNutritionSchedules(
 				timezone,
 				times,
 				insightMode: normalizeInsightMode(row.insight_mode),
-				promptInstructions: normalizePromptInstructions(row.prompt_instructions),
+				promptInstructions: normalizePromptInstructions(
+					row.prompt_instructions,
+				),
 				lastSent,
 				updatedAt: row.updated_at,
 				dueTime: time,
@@ -343,7 +368,9 @@ export async function markNotificationSlotSent(
 	)
 		.bind(userId)
 		.first<{ last_sent_json: string }>();
-	const lastSent = row?.last_sent_json ? JSON.parse(row.last_sent_json) as Record<string, string> : {};
+	const lastSent = row?.last_sent_json
+		? (JSON.parse(row.last_sent_json) as Record<string, string>)
+		: {};
 	lastSent[slotKey] = new Date().toISOString();
 	await env.ONEHEALTH_DB.prepare(
 		`UPDATE user_notification_schedules

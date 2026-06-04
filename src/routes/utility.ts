@@ -13,6 +13,7 @@ import {
 } from "../lib/ai-connections.js";
 import {
 	consumeTelegramLinkCode,
+	PROMPT_INSTRUCTIONS_LIMIT,
 	createTelegramLinkCode,
 	getNotificationSchedule,
 	getTelegramConnection,
@@ -619,6 +620,20 @@ function settingsShell(title: string, body: string): string {
 			font: inherit;
 		}
 		textarea { min-height: 94px; resize: vertical; }
+		textarea.large-textarea { min-height: 220px; }
+		.field-meta {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			margin: 14px 0 7px;
+		}
+		.field-meta label { margin: 0; }
+		.count {
+			color: var(--muted);
+			font-size: 0.8rem;
+			font-weight: 760;
+		}
 		.row {
 			display: grid;
 			grid-template-columns: 1fr 1fr;
@@ -633,6 +648,9 @@ function settingsShell(title: string, body: string): string {
 			color: var(--muted);
 			font-size: 0.9rem;
 		}
+		form .actions, .panel > .actions { margin-top: 18px; }
+		.section > .actions { margin: 0 0 14px; }
+		.time-row { align-items: end; margin-top: 10px; }
 		#message { min-height: 24px; margin-top: 14px; color: var(--green); font-weight: 760; }
 		footer {
 			padding: 36px 0;
@@ -724,6 +742,53 @@ function escapeHtml(value: string): string {
 		.replace(/"/g, "&quot;");
 }
 
+function timezoneOffsetLabel(timeZone: string, now = new Date()): string {
+	try {
+		const formatter = new Intl.DateTimeFormat("en-US", {
+			timeZone,
+			timeZoneName: "shortOffset",
+		});
+		return (
+			formatter.formatToParts(now).find((part) => part.type === "timeZoneName")
+				?.value ?? "GMT"
+		);
+	} catch {
+		return "GMT";
+	}
+}
+
+function timezoneOptions(selected: string): string {
+	const fallback = [
+		"UTC",
+		"America/New_York",
+		"America/Chicago",
+		"America/Denver",
+		"America/Los_Angeles",
+		"America/Toronto",
+		"Europe/London",
+		"Europe/Berlin",
+		"Asia/Dubai",
+		"Asia/Kolkata",
+		"Asia/Singapore",
+		"Asia/Tokyo",
+		"Australia/Sydney",
+	];
+	const intlWithSupportedValues = Intl as typeof Intl & {
+		supportedValuesOf?: (key: "timeZone") => string[];
+	};
+	const zones =
+		typeof intlWithSupportedValues.supportedValuesOf === "function"
+			? intlWithSupportedValues.supportedValuesOf("timeZone")
+			: fallback;
+	return Array.from(new Set([selected, ...zones]))
+		.filter(Boolean)
+		.map((zone) => {
+			const label = `${zone.replace(/_/g, " ")} (${timezoneOffsetLabel(zone)})`;
+			return `<option value="${escapeHtml(zone)}" ${zone === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+		})
+		.join("");
+}
+
 const AI_PROVIDER_DEFAULTS: Record<
 	AiProviderId,
 	{ baseUrl: string; model: string; help: string }
@@ -805,6 +870,7 @@ utilityRoutes.get("/settings", (c) => {
 			</div>
 		</section>
 		<section class="section">
+			<div class="actions"><a class="button" href="/">Back to home</a></div>
 			<div class="grid">${renderSettingsCards(categories)}</div>
 		</section>
 	</main>`;
@@ -846,6 +912,7 @@ utilityRoutes.get("/settings/sources", async (c) => {
 			</div>
 		</section>
 		<section class="section">
+			<div class="actions"><a class="button" href="/settings">Back to settings</a></div>
 			<div class="grid">${renderSettingsCards(cards)}</div>
 		</section>
 	</main>`;
@@ -933,6 +1000,7 @@ utilityRoutes.get("/settings/ai", async (c) => {
 		</section>
 		${preferencePanel}
 		<section class="section">
+			<div class="actions"><a class="button" href="/settings">Back to settings</a></div>
 			<div class="grid">${renderSettingsCards(cards)}</div>
 		</section>
 	</main>`;
@@ -963,6 +1031,7 @@ utilityRoutes.get("/settings/messages", async (c) => {
 			</div>
 		</section>
 		<section class="section">
+			<div class="actions"><a class="button" href="/settings">Back to settings</a></div>
 			<div class="grid">${renderSettingsCards(cards)}</div>
 		</section>
 	</main>`;
@@ -1009,7 +1078,7 @@ utilityRoutes.get("/settings/source/:id", (c) => {
 				<button class="primary" type="submit" ${isActive ? "" : "disabled"}>Save ${source.label}</button>
 				${oauthLink}
 				${helpLink}
-				<a class="button" href="/settings">Back to settings</a>
+				<a class="button" href="/settings/sources">Back to fitness sources</a>
 			</div>
 			<div id="message"></div>
 		</form>
@@ -1099,7 +1168,7 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save ${provider.label}</button>
 				<button type="button" id="makeDefault" ${connection ? "" : "disabled"}>${preference?.defaultProvider === provider.id ? "Default model" : "Use as default"}</button>
 				<button type="button" id="deleteAi" class="danger" ${connection ? "" : "disabled"}>Delete saved key</button>
-				<a class="button" href="/settings">Back to settings</a>
+				<a class="button" href="/settings/ai">Back to AI connections</a>
 			</div>
 			<div id="message"></div>
 		</form>
@@ -1161,6 +1230,7 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 	const times = schedule?.times.length
 		? schedule.times
 		: ["06:00", "10:00", "15:00", "22:00"];
+	const selectedTimezone = schedule?.timezone ?? "America/New_York";
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -1188,7 +1258,7 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 			<div class="row">
 				<div>
 					<label for="timezone">Timezone</label>
-					<input id="timezone" name="timezone" value="${escapeHtml(schedule?.timezone ?? "America/New_York")}" placeholder="America/New_York">
+					<select id="timezone" name="timezone">${timezoneOptions(selectedTimezone)}</select>
 				</div>
 				<div>
 					<label for="insightMode">Insight mode</label>
@@ -1197,8 +1267,11 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 			</div>
 			<label>Insight times</label>
 			<div id="times">${times.map((time) => `<div class="row time-row"><input name="times" value="${escapeHtml(time)}" placeholder="HH:MM"><button type="button" data-remove-time>Remove</button></div>`).join("")}</div>
-			<label for="promptInstructions">Insight instructions</label>
-			<textarea id="promptInstructions" name="promptInstructions" maxlength="1000" placeholder="Example: Focus on protein and fiber. Keep it under 5 bullets. Avoid motivational language.">${escapeHtml(schedule?.promptInstructions ?? "")}</textarea>
+			<div class="field-meta">
+				<label for="promptInstructions">Insight instructions</label>
+				<span class="count" id="promptCount">0/${PROMPT_INSTRUCTIONS_LIMIT}</span>
+			</div>
+			<textarea class="large-textarea" id="promptInstructions" name="promptInstructions" maxlength="${PROMPT_INSTRUCTIONS_LIMIT}" placeholder="Example: Focus on protein and fiber. Keep it under 5 bullets. Avoid motivational language.">${escapeHtml(schedule?.promptInstructions ?? "")}</textarea>
 			<div class="actions">
 				<button type="button" id="addTime">Add time</button>
 				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save schedule</button>
@@ -1210,6 +1283,15 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 	</main>
 	<script>
 		const linkMessage = document.getElementById("telegramLinkMessage");
+		const promptInstructions = document.getElementById("promptInstructions");
+		const promptCount = document.getElementById("promptCount");
+		const promptLimit = ${PROMPT_INSTRUCTIONS_LIMIT};
+		const updatePromptCount = () => {
+			if (!promptInstructions || !promptCount) return;
+			promptCount.textContent = promptInstructions.value.length + "/" + promptLimit;
+		};
+		promptInstructions?.addEventListener("input", updatePromptCount);
+		updatePromptCount();
 		document.getElementById("connectTelegram")?.addEventListener("click", async () => {
 			const response = await fetch("/api/telegram/link-code", { method: "POST" });
 			const data = await response.json().catch(() => ({}));
@@ -1902,10 +1984,22 @@ utilityRoutes.get("/settings-old", (c) => {
 	return c.html(html);
 });
 
-utilityRoutes.get("/", (c) => {
+utilityRoutes.get("/", async (c) => {
 	const googleReady = Boolean(
 		c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET,
 	);
+	const session = await getSettingsSession(c);
+	const [fitnessConnectedCount, aiConnectedCount] = session
+		? await Promise.all([
+				getOneHealthServiceStatuses(c.env, session).then(
+					(statuses) => statuses.filter((status) => status.configured).length,
+				),
+				listAiConnectionSummaries(c.env, session).then(
+					(connections) =>
+						connections.filter((connection) => connection.enabled).length,
+				),
+			])
+		: [0, 0];
 	const googleHeroButton = googleReady
 		? `<a class="button google" href="/auth/google?return_to=/connections">Continue with Google</a>`
 		: `<a class="button google" href="/signup">Google setup pending</a>`;
@@ -2563,12 +2657,12 @@ utilityRoutes.get("/", (c) => {
 				<p>One private <code>/mcp</code> endpoint for every supported client.</p>
 			</div>
 			<div class="stat">
-				<strong>6 sources</strong>
-				<p>Hevy, Strava, Cronometer, Intervals.icu, Fitbit, and Google Fit.</p>
+				<strong>${fitnessConnectedCount} fitness sources connected</strong>
+				<p>Hevy, Strava, Cronometer, Intervals.icu, Fitbit, and Google Fit are available.</p>
 			</div>
 			<div class="stat">
-				<strong>Per-user</strong>
-				<p>Each user connects their own tokens. Credentials are encrypted at rest.</p>
+				<strong>${aiConnectedCount} AI sources connected</strong>
+				<p>Each user connects their own model keys. Credentials are encrypted at rest.</p>
 			</div>
 		</section>
 
