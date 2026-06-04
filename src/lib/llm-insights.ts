@@ -1,4 +1,9 @@
-import type { AiConnection, AiProviderId } from "./ai-connections.js";
+import {
+	type AiConnection,
+	type AiProviderId,
+	type AiRequestSettings,
+	recommendedAiRequestSettings,
+} from "./ai-connections.js";
 
 export interface NutritionInsightInput {
 	date: string;
@@ -40,8 +45,45 @@ function nutritionPrompt(input: NutritionInsightInput): string {
 	].join("\n");
 }
 
-async function callOpenAiCompatible(connection: AiConnection, input: NutritionInsightInput): Promise<string> {
-	const baseUrl = trimSlash(connection.baseUrl || DEFAULT_BASE_URLS[connection.provider]);
+function openAiRequestSettings(connection: AiConnection): AiRequestSettings {
+	const recommended = recommendedAiRequestSettings(
+		connection.provider,
+		connection.modelName,
+	);
+	const defaults =
+		Object.keys(recommended).length > 0
+			? recommended
+			: { temperature: 0.4, max_tokens: 350 };
+	return { ...defaults, ...connection.requestSettings };
+}
+
+function textFromOpenAiContent(content: unknown): string {
+	if (typeof content === "string") return content.trim();
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((part) => {
+			if (typeof part === "string") return part;
+			if (
+				part &&
+				typeof part === "object" &&
+				"text" in part &&
+				typeof part.text === "string"
+			)
+				return part.text;
+			return "";
+		})
+		.join("")
+		.trim();
+}
+
+async function callOpenAiCompatible(
+	connection: AiConnection,
+	input: NutritionInsightInput,
+): Promise<string> {
+	const baseUrl = trimSlash(
+		connection.baseUrl || DEFAULT_BASE_URLS[connection.provider],
+	);
+	const requestSettings = openAiRequestSettings(connection);
 	const response = await fetch(`${baseUrl}/chat/completions`, {
 		method: "POST",
 		headers: {
@@ -49,31 +91,42 @@ async function callOpenAiCompatible(connection: AiConnection, input: NutritionIn
 			"Content-Type": "application/json",
 		},
 		body: JSON.stringify({
+			...requestSettings,
 			model: connection.modelName,
 			messages: [
 				{
 					role: "system",
-					content: "You produce safe, concise, non-medical nutrition insights for consumer wellness software.",
+					content:
+						"You produce safe, concise, non-medical nutrition insights for consumer wellness software.",
 				},
 				{ role: "user", content: nutritionPrompt(input) },
 			],
-			temperature: 0.4,
-			max_tokens: 350,
 		}),
 	});
 	if (!response.ok) {
-		throw new Error(`LLM request failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
+		throw new Error(
+			`LLM request failed (${response.status}): ${(await response.text()).slice(0, 500)}`,
+		);
 	}
-	const data = await response.json() as {
-		choices?: Array<{ message?: { content?: string } }>;
+	const data = (await response.json()) as {
+		choices?: Array<{ message?: { content?: unknown } }>;
 	};
-	const text = data.choices?.[0]?.message?.content?.trim();
-	if (!text) throw new Error("LLM response did not include text.");
+	const text = textFromOpenAiContent(data.choices?.[0]?.message?.content);
+	if (!text && connection.provider === "groq") {
+		throw new Error(
+			"Groq returned no final answer. Increase max_completion_tokens or disable reasoning in Advanced request settings.",
+		);
+	}
+	if (!text) throw new Error("LLM response did not include final text.");
 	return text;
 }
 
-async function callAnthropic(connection: AiConnection, input: NutritionInsightInput): Promise<string> {
+async function callAnthropic(
+	connection: AiConnection,
+	input: NutritionInsightInput,
+): Promise<string> {
 	const baseUrl = trimSlash(connection.baseUrl || DEFAULT_BASE_URLS.claude);
+	const settings = connection.requestSettings;
 	const response = await fetch(`${baseUrl}/v1/messages`, {
 		method: "POST",
 		headers: {
@@ -83,36 +136,56 @@ async function callAnthropic(connection: AiConnection, input: NutritionInsightIn
 		},
 		body: JSON.stringify({
 			model: connection.modelName,
-			max_tokens: 350,
-			temperature: 0.4,
+			max_tokens: settings.max_tokens ?? settings.max_completion_tokens ?? 350,
+			temperature: settings.temperature ?? 0.4,
+			...(settings.top_p === undefined ? {} : { top_p: settings.top_p }),
 			messages: [{ role: "user", content: nutritionPrompt(input) }],
 		}),
 	});
 	if (!response.ok) {
-		throw new Error(`Anthropic request failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
+		throw new Error(
+			`Anthropic request failed (${response.status}): ${(await response.text()).slice(0, 500)}`,
+		);
 	}
-	const data = await response.json() as {
+	const data = (await response.json()) as {
 		content?: Array<{ type?: string; text?: string }>;
 	};
-	const text = data.content?.find((part) => part.type === "text" && part.text)?.text?.trim();
+	const text = data.content
+		?.find((part) => part.type === "text" && part.text)
+		?.text?.trim();
 	if (!text) throw new Error("Anthropic response did not include text.");
 	return text;
 }
 
-async function callGemini(connection: AiConnection, input: NutritionInsightInput): Promise<string> {
+async function callGemini(
+	connection: AiConnection,
+	input: NutritionInsightInput,
+): Promise<string> {
 	const baseUrl = trimSlash(connection.baseUrl || DEFAULT_BASE_URLS.gemini);
-	const response = await fetch(`${baseUrl}/models/${encodeURIComponent(connection.modelName)}:generateContent?key=${encodeURIComponent(connection.apiKey)}`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			contents: [{ parts: [{ text: nutritionPrompt(input) }] }],
-			generationConfig: { temperature: 0.4, maxOutputTokens: 350 },
-		}),
-	});
+	const settings = connection.requestSettings;
+	const response = await fetch(
+		`${baseUrl}/models/${encodeURIComponent(connection.modelName)}:generateContent?key=${encodeURIComponent(connection.apiKey)}`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				contents: [{ parts: [{ text: nutritionPrompt(input) }] }],
+				generationConfig: {
+					temperature: settings.temperature ?? 0.4,
+					maxOutputTokens:
+						settings.max_tokens ?? settings.max_completion_tokens ?? 350,
+					...(settings.top_p === undefined ? {} : { topP: settings.top_p }),
+					...(settings.seed === undefined ? {} : { seed: settings.seed }),
+				},
+			}),
+		},
+	);
 	if (!response.ok) {
-		throw new Error(`Gemini request failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
+		throw new Error(
+			`Gemini request failed (${response.status}): ${(await response.text()).slice(0, 500)}`,
+		);
 	}
-	const data = await response.json() as {
+	const data = (await response.json()) as {
 		candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
 	};
 	const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
@@ -126,13 +199,18 @@ export async function generateNutritionInsight(
 ): Promise<string> {
 	if (!connection.enabled) throw new Error("AI connection is disabled.");
 	if (connection.provider === "claude") return callAnthropic(connection, input);
-	if (connection.provider === "gemini" || connection.provider === "google_ai_studio") {
+	if (
+		connection.provider === "gemini" ||
+		connection.provider === "google_ai_studio"
+	) {
 		return callGemini(connection, input);
 	}
 	return callOpenAiCompatible(connection, input);
 }
 
-export function generateBasicNutritionInsight(input: NutritionInsightInput): string {
+export function generateBasicNutritionInsight(
+	input: NutritionInsightInput,
+): string {
 	const label = input.mode === "previous_day" ? "yesterday" : "today";
 	return [
 		`Nutrition check-in for ${label}: Cronometer data was available, but no AI provider is connected yet.`,

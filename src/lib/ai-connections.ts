@@ -20,6 +20,7 @@ export interface AiConnectionSummary {
 	provider: AiProviderId;
 	baseUrl?: string;
 	modelName: string;
+	requestSettings: AiRequestSettings;
 	enabled: boolean;
 	updatedAt: string;
 }
@@ -31,6 +32,102 @@ export interface AiConnection extends AiConnectionSummary {
 export interface AiPreference {
 	defaultProvider: AiProviderId;
 	updatedAt: string;
+}
+
+export type AiRequestSettings = Record<string, boolean | number | string>;
+
+const ALLOWED_REQUEST_SETTINGS = new Set([
+	"temperature",
+	"top_p",
+	"max_tokens",
+	"max_completion_tokens",
+	"include_reasoning",
+	"reasoning_format",
+	"seed",
+]);
+
+function parseStoredRequestSettings(value: string | null): AiRequestSettings {
+	if (!value) return {};
+	try {
+		return normalizeAiRequestSettings(JSON.parse(value));
+	} catch {
+		return {};
+	}
+}
+
+export function normalizeAiRequestSettings(value: unknown): AiRequestSettings {
+	if (value === undefined || value === null || value === "") return {};
+	if (typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("Advanced request settings must be a JSON object.");
+	}
+
+	const input = value as Record<string, unknown>;
+	const unknownKeys = Object.keys(input).filter(
+		(key) => !ALLOWED_REQUEST_SETTINGS.has(key),
+	);
+	if (unknownKeys.length > 0) {
+		throw new Error(
+			`Unsupported advanced request setting${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}.`,
+		);
+	}
+
+	const output: AiRequestSettings = {};
+	for (const key of ["temperature", "top_p"] as const) {
+		const candidate = input[key];
+		if (candidate === undefined) continue;
+		if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+			throw new Error(`${key} must be a number.`);
+		}
+		const maximum = key === "temperature" ? 2 : 1;
+		if (candidate < 0 || candidate > maximum) {
+			throw new Error(`${key} must be between 0 and ${maximum}.`);
+		}
+		output[key] = candidate;
+	}
+	for (const key of ["max_tokens", "max_completion_tokens"] as const) {
+		const candidate = input[key];
+		if (candidate === undefined) continue;
+		if (
+			!Number.isInteger(candidate) ||
+			(candidate as number) < 1 ||
+			(candidate as number) > 4000
+		) {
+			throw new Error(`${key} must be a whole number between 1 and 4000.`);
+		}
+		output[key] = candidate as number;
+	}
+	if (input.include_reasoning !== undefined) {
+		if (typeof input.include_reasoning !== "boolean") {
+			throw new Error("include_reasoning must be true or false.");
+		}
+		output.include_reasoning = input.include_reasoning;
+	}
+	if (input.reasoning_format !== undefined) {
+		if (!["hidden", "raw", "parsed"].includes(String(input.reasoning_format))) {
+			throw new Error('reasoning_format must be "hidden", "raw", or "parsed".');
+		}
+		output.reasoning_format = String(input.reasoning_format);
+	}
+	if (input.seed !== undefined) {
+		if (!Number.isInteger(input.seed))
+			throw new Error("seed must be a whole number.");
+		output.seed = input.seed as number;
+	}
+	return output;
+}
+
+export function recommendedAiRequestSettings(
+	provider: AiProviderId,
+	modelName: string,
+): AiRequestSettings {
+	const model = modelName.trim().toLowerCase();
+	if (provider === "groq" && model.startsWith("openai/gpt-oss-")) {
+		return { include_reasoning: false, max_completion_tokens: 1200 };
+	}
+	if (provider === "groq" && model.startsWith("qwen/qwen3")) {
+		return { reasoning_format: "hidden", max_completion_tokens: 1200 };
+	}
+	return {};
 }
 
 function idFor(userId: string, provider: AiProviderId): string {
@@ -45,6 +142,7 @@ export async function upsertAiConnection(
 		apiKey: string;
 		baseUrl?: string;
 		modelName: string;
+		requestSettings?: AiRequestSettings;
 		enabled?: boolean;
 	},
 ): Promise<void> {
@@ -53,12 +151,13 @@ export async function upsertAiConnection(
 	const encrypted = await encryptApiKey(args.apiKey, env.COOKIE_ENCRYPTION_KEY);
 	await env.ONEHEALTH_DB.prepare(
 		`INSERT INTO user_ai_connections
-		   (id, user_id, provider, encrypted_api_key, base_url, model_name, enabled, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (id, user_id, provider, encrypted_api_key, base_url, model_name, request_settings_json, enabled, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(user_id, provider) DO UPDATE SET
 		   encrypted_api_key = excluded.encrypted_api_key,
 		   base_url = excluded.base_url,
 		   model_name = excluded.model_name,
+		   request_settings_json = excluded.request_settings_json,
 		   enabled = excluded.enabled,
 		   updated_at = excluded.updated_at`,
 	)
@@ -69,6 +168,7 @@ export async function upsertAiConnection(
 			encrypted,
 			args.baseUrl?.trim() || null,
 			args.modelName.trim(),
+			JSON.stringify(args.requestSettings ?? {}),
 			args.enabled === false ? 0 : 1,
 			now,
 			now,
@@ -83,7 +183,7 @@ export async function getAiConnection(
 ): Promise<AiConnection | null> {
 	const userId = await ensureUser(env, session);
 	const row = await env.ONEHEALTH_DB.prepare(
-		`SELECT provider, encrypted_api_key, base_url, model_name, enabled, updated_at
+		`SELECT provider, encrypted_api_key, base_url, model_name, request_settings_json, enabled, updated_at
 		 FROM user_ai_connections
 		 WHERE user_id = ? AND provider = ?`,
 	)
@@ -93,15 +193,20 @@ export async function getAiConnection(
 			encrypted_api_key: string;
 			base_url: string | null;
 			model_name: string;
+			request_settings_json: string | null;
 			enabled: number;
 			updated_at: string;
 		}>();
 	if (!row) return null;
 	return {
 		provider: row.provider,
-		apiKey: await decryptApiKey(row.encrypted_api_key, env.COOKIE_ENCRYPTION_KEY),
+		apiKey: await decryptApiKey(
+			row.encrypted_api_key,
+			env.COOKIE_ENCRYPTION_KEY,
+		),
 		baseUrl: row.base_url ?? undefined,
 		modelName: row.model_name,
+		requestSettings: parseStoredRequestSettings(row.request_settings_json),
 		enabled: row.enabled === 1,
 		updatedAt: row.updated_at,
 	};
@@ -113,7 +218,7 @@ export async function listAiConnectionSummaries(
 ): Promise<AiConnectionSummary[]> {
 	const userId = await ensureUser(env, session);
 	const { results } = await env.ONEHEALTH_DB.prepare(
-		`SELECT provider, base_url, model_name, enabled, updated_at
+		`SELECT provider, base_url, model_name, request_settings_json, enabled, updated_at
 		 FROM user_ai_connections
 		 WHERE user_id = ?
 		 ORDER BY provider ASC`,
@@ -123,6 +228,7 @@ export async function listAiConnectionSummaries(
 			provider: AiProviderId;
 			base_url: string | null;
 			model_name: string;
+			request_settings_json: string | null;
 			enabled: number;
 			updated_at: string;
 		}>();
@@ -130,6 +236,7 @@ export async function listAiConnectionSummaries(
 		provider: row.provider,
 		baseUrl: row.base_url ?? undefined,
 		modelName: row.model_name,
+		requestSettings: parseStoredRequestSettings(row.request_settings_json),
 		enabled: row.enabled === 1,
 		updatedAt: row.updated_at,
 	}));

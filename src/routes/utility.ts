@@ -6,6 +6,8 @@ import {
 	getAiConnection,
 	getAiPreference,
 	listAiConnectionSummaries,
+	normalizeAiRequestSettings,
+	recommendedAiRequestSettings,
 	upsertAiPreference,
 	upsertAiConnection,
 } from "../lib/ai-connections.js";
@@ -67,7 +69,9 @@ utilityRoutes.get("/stats", async (c) => {
 });
 
 utilityRoutes.get("/signup", (c) => {
-	const googleReady = Boolean(c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET);
+	const googleReady = Boolean(
+		c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET,
+	);
 	const googleAction = googleReady
 		? `<a class="button google" href="/auth/google?return_to=/connections">Continue with Google</a>`
 		: `<span class="button disabled">Google setup pending</span>`;
@@ -239,11 +243,13 @@ const SOURCE_SETTINGS: SourceSettingsCard[] = [
 		id: "strava",
 		label: "Strava",
 		status: "Ready",
-		description: "Endurance activities, activity detail, HR, pace, and power when available.",
+		description:
+			"Endurance activities, activity detail, HR, pace, and power when available.",
 		href: "/settings/source/strava",
 		authType: "oauth",
 		fields: ["accessToken", "refreshToken"],
-		helpText: "Paste Strava OAuth tokens for now. Full OAuth connect can be added later.",
+		helpText:
+			"Paste Strava OAuth tokens for now. Full OAuth connect can be added later.",
 		helpUrl: "https://www.strava.com/settings/api",
 		helpLabel: "Open Strava API settings",
 	},
@@ -255,7 +261,8 @@ const SOURCE_SETTINGS: SourceSettingsCard[] = [
 		href: "/settings/source/cronometer",
 		authType: "username_password",
 		fields: ["username", "password"],
-		helpText: "Add your Cronometer username/email and password for nutrition sync.",
+		helpText:
+			"Add your Cronometer username/email and password for nutrition sync.",
 		helpUrl: "https://cronometer.com/login/",
 		helpLabel: "Open Cronometer",
 	},
@@ -279,7 +286,8 @@ const SOURCE_SETTINGS: SourceSettingsCard[] = [
 		href: "/settings/source/fitbit",
 		authType: "oauth",
 		fields: ["accessToken", "refreshToken"],
-		helpText: "Use OAuth connect when app credentials are configured, or paste Fitbit tokens.",
+		helpText:
+			"Use OAuth connect when app credentials are configured, or paste Fitbit tokens.",
 		helpUrl: "https://dev.fitbit.com/apps",
 		helpLabel: "Open Fitbit apps",
 	},
@@ -287,11 +295,13 @@ const SOURCE_SETTINGS: SourceSettingsCard[] = [
 		id: "google_fit",
 		label: "Google Fit",
 		status: "OAuth",
-		description: "Activity, body, heart-rate, and sleep aggregates from Google Fit.",
+		description:
+			"Activity, body, heart-rate, and sleep aggregates from Google Fit.",
 		href: "/settings/source/google_fit",
 		authType: "oauth",
 		fields: ["accessToken", "refreshToken"],
-		helpText: "Use OAuth connect when app credentials are configured, or paste Google Fit tokens.",
+		helpText:
+			"Use OAuth connect when app credentials are configured, or paste Google Fit tokens.",
 		helpUrl: "https://console.cloud.google.com/apis/credentials",
 		helpLabel: "Open Google credentials",
 	},
@@ -299,17 +309,20 @@ const SOURCE_SETTINGS: SourceSettingsCard[] = [
 		id: "garmin",
 		label: "Garmin",
 		status: "Planned",
-		description: "Activities, HRV, sleep, stress, training, and wearable health metrics.",
+		description:
+			"Activities, HRV, sleep, stress, training, and wearable health metrics.",
 		href: "/settings/source/garmin",
 		authType: "coming_soon",
 		fields: [],
-		helpText: "Garmin requires official developer/partner access. This is a placeholder.",
+		helpText:
+			"Garmin requires official developer/partner access. This is a placeholder.",
 	},
 	{
 		id: "oura",
 		label: "Oura",
 		status: "Planned",
-		description: "Sleep, readiness, HRV, resting heart rate, and recovery trends.",
+		description:
+			"Sleep, readiness, HRV, resting heart rate, and recovery trends.",
 		href: "/settings/source/oura",
 		authType: "coming_soon",
 		fields: [],
@@ -334,7 +347,10 @@ const LLM_SETTINGS: SettingsCard[] = [
 		status: "Planned",
 		description: "Use your OpenAI key for nutrition and training insights.",
 		href: "/settings/llm/openai",
-		guidance: ["Model examples: gpt-4o-mini, gpt-4.1-mini", "Base URL: https://api.openai.com/v1"],
+		guidance: [
+			"Model examples: gpt-4o-mini, gpt-4.1-mini",
+			"Base URL: https://api.openai.com/v1",
+		],
 	},
 	{
 		id: "claude",
@@ -342,7 +358,10 @@ const LLM_SETTINGS: SettingsCard[] = [
 		status: "Planned",
 		description: "Use your Anthropic key for careful, concise insight writing.",
 		href: "/settings/llm/claude",
-		guidance: ["Model examples: claude-3-5-haiku-latest, claude-3-5-sonnet-latest", "Base URL: https://api.anthropic.com"],
+		guidance: [
+			"Model examples: claude-3-5-haiku-latest, claude-3-5-sonnet-latest",
+			"Base URL: https://api.anthropic.com",
+		],
 	},
 	{
 		id: "gemini",
@@ -350,7 +369,10 @@ const LLM_SETTINGS: SettingsCard[] = [
 		status: "Planned",
 		description: "Use Gemini models for AI-generated OneHealth insights.",
 		href: "/settings/llm/gemini",
-		guidance: ["Model examples: gemini-1.5-flash, gemini-2.0-flash", "Get keys from Google AI Studio."],
+		guidance: [
+			"Model examples: gemini-1.5-flash, gemini-2.0-flash",
+			"Get keys from Google AI Studio.",
+		],
 	},
 	{
 		id: "nvidia_nim",
@@ -358,7 +380,10 @@ const LLM_SETTINGS: SettingsCard[] = [
 		status: "Planned",
 		description: "Use NVIDIA-hosted open models with your own API key.",
 		href: "/settings/llm/nvidia_nim",
-		guidance: ["Model examples: meta/llama-3.1-70b-instruct, qwen/qwen2.5-coder-32b-instruct", "Copy the model ID exactly from NVIDIA Build."],
+		guidance: [
+			"Model examples: meta/llama-3.1-70b-instruct, qwen/qwen2.5-coder-32b-instruct",
+			"Copy the model ID exactly from NVIDIA Build.",
+		],
 	},
 	{
 		id: "openrouter",
@@ -366,7 +391,10 @@ const LLM_SETTINGS: SettingsCard[] = [
 		status: "Planned",
 		description: "Use OpenRouter to choose from many hosted models.",
 		href: "/settings/llm/openrouter",
-		guidance: ["Model examples: openai/gpt-4o-mini, anthropic/claude-3.5-sonnet, qwen/qwen-2.5-72b-instruct", "Base URL: https://openrouter.ai/api/v1"],
+		guidance: [
+			"Model examples: openai/gpt-4o-mini, anthropic/claude-3.5-sonnet, qwen/qwen-2.5-72b-instruct",
+			"Base URL: https://openrouter.ai/api/v1",
+		],
 	},
 	{
 		id: "groq",
@@ -374,7 +402,10 @@ const LLM_SETTINGS: SettingsCard[] = [
 		status: "Planned",
 		description: "Use Groq-hosted fast inference models for short insights.",
 		href: "/settings/llm/groq",
-		guidance: ["Model examples: llama-3.1-8b-instant, llama-3.3-70b-versatile", "Base URL: https://api.groq.com/openai/v1"],
+		guidance: [
+			"Model examples: llama-3.1-8b-instant, llama-3.3-70b-versatile, openai/gpt-oss-120b",
+			"Base URL: https://api.groq.com/openai/v1",
+		],
 	},
 	{
 		id: "google_ai_studio",
@@ -382,7 +413,10 @@ const LLM_SETTINGS: SettingsCard[] = [
 		status: "Planned",
 		description: "Use Google AI Studio API keys for Gemini-family models.",
 		href: "/settings/llm/google_ai_studio",
-		guidance: ["Model examples: gemini-1.5-flash, gemini-2.0-flash", "Use the API key from AI Studio, not Google login OAuth."],
+		guidance: [
+			"Model examples: gemini-1.5-flash, gemini-2.0-flash",
+			"Use the API key from AI Studio, not Google login OAuth.",
+		],
 	},
 ];
 
@@ -391,7 +425,8 @@ const MESSAGING_SETTINGS: SettingsCard[] = [
 		id: "telegram",
 		label: "Telegram",
 		status: "Planned",
-		description: "Receive nutrition check-ins and future AI insights in Telegram.",
+		description:
+			"Receive nutrition check-ins and future AI insights in Telegram.",
 		href: "/settings/messaging/telegram",
 	},
 ];
@@ -661,12 +696,23 @@ function statusLabel(source?: "user_d1" | "worker_secret" | "missing"): string {
 	return "Not connected";
 }
 
-async function getSettingsSession(c: { req: { header: (name: string) => string | undefined }; env: Env }): Promise<Props | null> {
+async function getSettingsSession(c: {
+	req: { header: (name: string) => string | undefined };
+	env: Env;
+}): Promise<Props | null> {
 	const sessionCookie = c.req.header("Cookie");
 	const sessionToken = sessionCookie?.match(/session=([^;]+)/)?.[1];
 	if (!sessionToken) return null;
-	const sessionData = await c.env.OAUTH_KV.get(`session:${sessionToken}`, "json");
-	if (!sessionData || typeof sessionData !== "object" || !("login" in sessionData)) return null;
+	const sessionData = await c.env.OAUTH_KV.get(
+		`session:${sessionToken}`,
+		"json",
+	);
+	if (
+		!sessionData ||
+		typeof sessionData !== "object" ||
+		!("login" in sessionData)
+	)
+		return null;
 	return sessionData as Props;
 }
 
@@ -678,7 +724,10 @@ function escapeHtml(value: string): string {
 		.replace(/"/g, "&quot;");
 }
 
-const AI_PROVIDER_DEFAULTS: Record<AiProviderId, { baseUrl: string; model: string; help: string }> = {
+const AI_PROVIDER_DEFAULTS: Record<
+	AiProviderId,
+	{ baseUrl: string; model: string; help: string }
+> = {
 	openai: {
 		baseUrl: "https://api.openai.com/v1",
 		model: "gpt-4o-mini",
@@ -722,21 +771,24 @@ utilityRoutes.get("/settings", (c) => {
 			id: "sources",
 			label: "Fitness Apps & Wearables",
 			status: "Data sources",
-			description: "Connect health apps, nutrition trackers, training platforms, and wearable devices.",
+			description:
+				"Connect health apps, nutrition trackers, training platforms, and wearable devices.",
 			href: "/settings/sources",
 		},
 		{
 			id: "ai",
 			label: "AI Connections",
 			status: "BYOK",
-			description: "Add your own LLM API keys for future OneHealth nutrition and training insights.",
+			description:
+				"Add your own LLM API keys for future OneHealth nutrition and training insights.",
 			href: "/settings/ai",
 		},
 		{
 			id: "messages",
 			label: "Messages",
 			status: "Check-ins",
-			description: "Connect Telegram and future messaging channels for scheduled insight delivery.",
+			description:
+				"Connect Telegram and future messaging channels for scheduled insight delivery.",
 			href: "/settings/messages",
 		},
 	];
@@ -761,7 +813,10 @@ utilityRoutes.get("/settings", (c) => {
 
 utilityRoutes.get("/settings/sources", async (c) => {
 	const session = await getSettingsSession(c);
-	const statusMap = new Map<string, { source: "user_d1" | "worker_secret" | "missing" }>();
+	const statusMap = new Map<
+		string,
+		{ source: "user_d1" | "worker_secret" | "missing" }
+	>();
 	if (session) {
 		const statuses = await getOneHealthServiceStatuses(c.env, session);
 		for (const status of statuses) statusMap.set(status.id, status);
@@ -771,7 +826,11 @@ utilityRoutes.get("/settings/sources", async (c) => {
 		const isComingSoon = source.authType === "coming_soon";
 		return {
 			...source,
-			status: isComingSoon ? "Coming soon" : session ? statusLabel(status?.source) : "Sign in required",
+			status: isComingSoon
+				? "Coming soon"
+				: session
+					? statusLabel(status?.source)
+					: "Sign in required",
 		};
 	});
 	const body = `<main class="shell">
@@ -796,7 +855,9 @@ utilityRoutes.get("/settings/sources", async (c) => {
 utilityRoutes.get("/settings/ai", async (c) => {
 	const session = await getSettingsSession(c);
 	const connected = new Set<AiProviderId>();
-	const summaries = session ? await listAiConnectionSummaries(c.env, session) : [];
+	const summaries = session
+		? await listAiConnectionSummaries(c.env, session)
+		: [];
 	const preference = session ? await getAiPreference(c.env, session) : null;
 	const defaultProvider = preference?.defaultProvider;
 	if (session) {
@@ -817,23 +878,29 @@ utilityRoutes.get("/settings/ai", async (c) => {
 	const connectedOptions = summaries
 		.filter((summary) => summary.enabled)
 		.map((summary) => {
-			const label = LLM_SETTINGS.find((provider) => provider.id === summary.provider)?.label ?? summary.provider;
+			const label =
+				LLM_SETTINGS.find((provider) => provider.id === summary.provider)
+					?.label ?? summary.provider;
 			return `<option value="${summary.provider}" ${summary.provider === defaultProvider ? "selected" : ""}>${escapeHtml(label)} - ${escapeHtml(summary.modelName)}</option>`;
 		})
 		.join("");
-	const selectedSummary = summaries.find((summary) => summary.provider === defaultProvider);
+	const selectedSummary = summaries.find(
+		(summary) => summary.provider === defaultProvider,
+	);
 	const preferencePanel = session
 		? `<form class="panel" id="aiPreferenceForm">
 			<strong>Default AI model</strong>
 			<p>This model will be used for Telegram nutrition insights and future OneHealth AI summaries.</p>
-			${connectedOptions
-				? `<label for="defaultProvider">Use this connected model</label>
+			${
+				connectedOptions
+					? `<label for="defaultProvider">Use this connected model</label>
 					<select id="defaultProvider" name="defaultProvider">${connectedOptions}</select>
 					<div class="helper">${selectedSummary ? `Current default: ${escapeHtml(selectedSummary.modelName)}` : "Choose one connected provider as your default model."}</div>
 					<div class="actions">
 						<button class="primary" type="submit">Save default model</button>
 					</div>`
-				: `<div class="helper">Add an AI provider first. Then choose your default model here.</div>`}
+					: `<div class="helper">Add an AI provider first. Then choose your default model here.</div>`
+			}
 			<div id="preferenceMessage"></div>
 		</form>
 		<script>
@@ -877,7 +944,11 @@ utilityRoutes.get("/settings/messages", async (c) => {
 	const telegram = session ? await getTelegramConnection(c.env, session) : null;
 	const cards = MESSAGING_SETTINGS.map((service) => ({
 		...service,
-		status: session ? telegram?.enabled ? "Connected" : "Setup pending" : "Sign in required",
+		status: session
+			? telegram?.enabled
+				? "Connected"
+				: "Setup pending"
+			: "Sign in required",
 	}));
 	const body = `<main class="shell">
 		<section class="hero">
@@ -905,8 +976,12 @@ utilityRoutes.get("/settings/source/:id", (c) => {
 	const isActive = source.authType !== "coming_soon";
 	const fields = source.fields
 		.map((field) => {
-			const type = /password|secret|token|key/i.test(field) ? "password" : "text";
-			const label = field.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
+			const type = /password|secret|token|key/i.test(field)
+				? "password"
+				: "text";
+			const label = field
+				.replace(/([A-Z])/g, " $1")
+				.replace(/^./, (char) => char.toUpperCase());
 			return `<label for="${field}">${label}</label><input id="${field}" name="${field}" type="${type}" autocomplete="off" placeholder="${label}">`;
 		})
 		.join("");
@@ -968,10 +1043,24 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 	const provider = LLM_SETTINGS.find((item) => item.id === id);
 	if (!provider) return c.text("Unknown LLM provider", 404);
 	const session = await getSettingsSession(c);
-	const connection = session ? (await listAiConnectionSummaries(c.env, session)).find((item) => item.provider === provider.id) : null;
+	const connection = session
+		? (await listAiConnectionSummaries(c.env, session)).find(
+				(item) => item.provider === provider.id,
+			)
+		: null;
 	const preference = session ? await getAiPreference(c.env, session) : null;
 	const defaults = AI_PROVIDER_DEFAULTS[provider.id as AiProviderId];
-	const guidance = provider.guidance?.map((item) => `<li>${escapeHtml(item)}</li>`).join("") ?? "";
+	const savedRequestSettings = connection?.requestSettings ?? {};
+	const requestSettings =
+		Object.keys(savedRequestSettings).length > 0
+			? savedRequestSettings
+			: recommendedAiRequestSettings(
+					provider.id as AiProviderId,
+					connection?.modelName ?? defaults.model,
+				);
+	const guidance =
+		provider.guidance?.map((item) => `<li>${escapeHtml(item)}</li>`).join("") ??
+		"";
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -1001,6 +1090,11 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 				<ul class="guidance">${guidance}</ul>
 				<div>Use the model name exactly as the provider displays it. For NVIDIA NIM and OpenRouter, that usually includes a provider prefix such as <strong>qwen/...</strong> or <strong>openai/...</strong>.</div>
 			</div>
+			<label for="requestSettings">Advanced request settings</label>
+			<textarea id="requestSettings" name="requestSettings" spellcheck="false" placeholder="{}">${escapeHtml(JSON.stringify(requestSettings, null, 2))}</textarea>
+			<div class="helper">
+				Optional provider-specific JSON for token limits, temperature, and reasoning controls. OneHealth blocks model, messages, credentials, streaming, and unknown settings. Groq GPT-OSS models work best with <strong>include_reasoning: false</strong> and a larger <strong>max_completion_tokens</strong> value.
+			</div>
 			<div class="actions">
 				<button class="primary" type="submit" ${session ? "" : "disabled"}>Save ${provider.label}</button>
 				<button type="button" id="makeDefault" ${connection ? "" : "disabled"}>${preference?.defaultProvider === provider.id ? "Default model" : "Use as default"}</button>
@@ -1019,10 +1113,11 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 			const apiKey = form.elements.apiKey.value.trim();
 			const modelName = form.elements.model.value.trim();
 			const baseUrl = form.elements.baseUrl.value.trim();
+			const requestSettingsJson = form.elements.requestSettings.value.trim();
 			const response = await fetch("/api/ai-connections", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ provider, apiKey, modelName, baseUrl, keepExistingKey: ${connection ? "true" : "false"} }),
+				body: JSON.stringify({ provider, apiKey, modelName, baseUrl, requestSettingsJson, keepExistingKey: ${connection ? "true" : "false"} }),
 			});
 			const data = await response.json().catch(() => ({}));
 			message.textContent = response.ok ? "Saved AI connection." : (data.error || "Could not save AI connection.");
@@ -1041,6 +1136,15 @@ utilityRoutes.get("/settings/llm/:id", async (c) => {
 			const data = await response.json().catch(() => ({}));
 			message.textContent = response.ok ? "Saved as default AI model." : (data.error || "Could not save default model.");
 		});
+		const modelInput = form?.elements.model;
+		const requestSettingsInput = form?.elements.requestSettings;
+		modelInput?.addEventListener("input", () => {
+			if (provider !== "groq" || !modelInput.value.trim().toLowerCase().startsWith("openai/gpt-oss-")) return;
+			const current = requestSettingsInput.value.trim();
+			if (!current || current === "{}") {
+				requestSettingsInput.value = JSON.stringify({ include_reasoning: false, max_completion_tokens: 1200 }, null, 2);
+			}
+		});
 	</script>`;
 	return c.html(settingsShell(provider.label, body));
 });
@@ -1051,8 +1155,12 @@ utilityRoutes.get("/settings/messaging/:id", async (c) => {
 	if (!service) return c.text("Unknown messaging service", 404);
 	const session = await getSettingsSession(c);
 	const telegram = session ? await getTelegramConnection(c.env, session) : null;
-	const schedule = session ? await getNotificationSchedule(c.env, session) : null;
-	const times = schedule?.times.length ? schedule.times : ["06:00", "10:00", "15:00", "22:00"];
+	const schedule = session
+		? await getNotificationSchedule(c.env, session)
+		: null;
+	const times = schedule?.times.length
+		? schedule.times
+		: ["06:00", "10:00", "15:00", "22:00"];
 	const body = `<main class="shell">
 		<section class="hero">
 			<div>
@@ -1169,15 +1277,38 @@ utilityRoutes.post("/api/ai-connections", async (c) => {
 	try {
 		const body = await c.req.json();
 		const provider = body.provider as AiProviderId;
-		if (!AI_PROVIDER_DEFAULTS[provider]) return c.json({ error: "Unknown AI provider." }, 400);
-		const modelName = typeof body.modelName === "string" ? body.modelName.trim() : "";
+		if (!AI_PROVIDER_DEFAULTS[provider])
+			return c.json({ error: "Unknown AI provider." }, 400);
+		const modelName =
+			typeof body.modelName === "string" ? body.modelName.trim() : "";
 		const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
+		let requestSettings: ReturnType<typeof normalizeAiRequestSettings>;
+		try {
+			const requestSettingsValue =
+				typeof body.requestSettingsJson === "string"
+					? JSON.parse(body.requestSettingsJson || "{}")
+					: body.requestSettings;
+			requestSettings = normalizeAiRequestSettings(requestSettingsValue);
+		} catch (error) {
+			return c.json(
+				{
+					error:
+						error instanceof Error
+							? error.message
+							: "Advanced request settings must be valid JSON.",
+				},
+				400,
+			);
+		}
 		let apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
 		if (!modelName) return c.json({ error: "Model name is required." }, 400);
 		if (!apiKey && body.keepExistingKey) {
-			const existing = (await listAiConnectionSummaries(c.env, session)).find((item) => item.provider === provider);
+			const existing = (await listAiConnectionSummaries(c.env, session)).find(
+				(item) => item.provider === provider,
+			);
 			if (existing) {
-				apiKey = (await getAiConnection(c.env, session, provider))?.apiKey ?? "";
+				apiKey =
+					(await getAiConnection(c.env, session, provider))?.apiKey ?? "";
 			}
 		}
 		if (!apiKey) return c.json({ error: "API key is required." }, 400);
@@ -1186,6 +1317,7 @@ utilityRoutes.post("/api/ai-connections", async (c) => {
 			apiKey,
 			baseUrl,
 			modelName,
+			requestSettings,
 			enabled: true,
 		});
 		return c.json({ success: true });
@@ -1199,7 +1331,8 @@ utilityRoutes.delete("/api/ai-connections/:provider", async (c) => {
 	const session = await getSettingsSession(c);
 	if (!session) return c.json({ error: "Unauthorized" }, 401);
 	const provider = c.req.param("provider") as AiProviderId;
-	if (!AI_PROVIDER_DEFAULTS[provider]) return c.json({ error: "Unknown AI provider." }, 400);
+	if (!AI_PROVIDER_DEFAULTS[provider])
+		return c.json({ error: "Unknown AI provider." }, 400);
 	await deleteAiConnection(c.env, session, provider);
 	return c.json({ success: true });
 });
@@ -1217,10 +1350,17 @@ utilityRoutes.post("/api/ai-preferences", async (c) => {
 	try {
 		const body = await c.req.json();
 		const defaultProvider = body.defaultProvider as AiProviderId;
-		if (!AI_PROVIDER_DEFAULTS[defaultProvider]) return c.json({ error: "Unknown AI provider." }, 400);
+		if (!AI_PROVIDER_DEFAULTS[defaultProvider])
+			return c.json({ error: "Unknown AI provider." }, 400);
 		const connections = await listAiConnectionSummaries(c.env, session);
-		const connection = connections.find((item) => item.provider === defaultProvider && item.enabled);
-		if (!connection) return c.json({ error: "Connect this AI provider before making it the default." }, 400);
+		const connection = connections.find(
+			(item) => item.provider === defaultProvider && item.enabled,
+		);
+		if (!connection)
+			return c.json(
+				{ error: "Connect this AI provider before making it the default." },
+				400,
+			);
 		await upsertAiPreference(c.env, session, defaultProvider);
 		return c.json({ success: true });
 	} catch (error) {
@@ -1233,7 +1373,13 @@ utilityRoutes.post("/api/telegram/link-code", async (c) => {
 	const session = await getSettingsSession(c);
 	if (!session) return c.json({ error: "Unauthorized" }, 401);
 	if (!c.env.TELEGRAM_BOT_USERNAME) {
-		return c.json({ error: "TELEGRAM_BOT_USERNAME must be configured before Telegram linking is available." }, 503);
+		return c.json(
+			{
+				error:
+					"TELEGRAM_BOT_USERNAME must be configured before Telegram linking is available.",
+			},
+			503,
+		);
 	}
 	const code = await createTelegramLinkCode(c.env, session);
 	const botUrl = `https://t.me/${encodeURIComponent(c.env.TELEGRAM_BOT_USERNAME)}?start=${encodeURIComponent(code)}`;
@@ -1245,10 +1391,16 @@ utilityRoutes.post("/api/telegram/test-nutrition-insight", async (c) => {
 	if (!session) return c.json({ error: "Unauthorized" }, 401);
 	try {
 		await sendTestNutritionInsight(c.env, session);
-		return c.json({ success: true, message: "Test nutrition insight sent to Telegram." });
+		return c.json({
+			success: true,
+			message: "Test nutrition insight sent to Telegram.",
+		});
 	} catch (error) {
 		console.error("Test nutrition insight failed:", error);
-		const message = error instanceof Error ? error.message : "Could not send test nutrition insight.";
+		const message =
+			error instanceof Error
+				? error.message
+				: "Could not send test nutrition insight.";
 		return c.json({ error: message.slice(0, 500) }, 400);
 	}
 });
@@ -1256,9 +1408,10 @@ utilityRoutes.post("/api/telegram/test-nutrition-insight", async (c) => {
 utilityRoutes.post("/api/telegram/webhook", async (c) => {
 	if (c.env.TELEGRAM_WEBHOOK_SECRET) {
 		const token = c.req.header("X-Telegram-Bot-Api-Secret-Token");
-		if (token !== c.env.TELEGRAM_WEBHOOK_SECRET) return c.json({ ok: false }, 401);
+		if (token !== c.env.TELEGRAM_WEBHOOK_SECRET)
+			return c.json({ ok: false }, 401);
 	}
-	const update = await c.req.json().catch(() => null) as {
+	const update = (await c.req.json().catch(() => null)) as {
 		message?: {
 			text?: string;
 			chat?: { id?: number | string; username?: string };
@@ -1288,7 +1441,8 @@ utilityRoutes.post("/api/telegram/webhook", async (c) => {
 	}
 	await upsertTelegramConnection(c.env, userId, {
 		externalUserId: String(chatId),
-		externalUsername: update?.message?.chat?.username ?? update?.message?.from?.username,
+		externalUsername:
+			update?.message?.chat?.username ?? update?.message?.from?.username,
 		enabled: true,
 	});
 	await sendTelegramMessage(c.env, {
@@ -1314,7 +1468,11 @@ utilityRoutes.post("/api/notification-schedule", async (c) => {
 	try {
 		const body = await c.req.json();
 		const times = normalizeNotificationTimes(body.times);
-		if (times.length === 0) return c.json({ error: "Add at least one valid time in HH:MM format." }, 400);
+		if (times.length === 0)
+			return c.json(
+				{ error: "Add at least one valid time in HH:MM format." },
+				400,
+			);
 		await upsertNotificationSchedule(c.env, session, {
 			enabled: Boolean(body.enabled),
 			timezone: normalizeTimezone(body.timezone),
@@ -1745,7 +1903,9 @@ utilityRoutes.get("/settings-old", (c) => {
 });
 
 utilityRoutes.get("/", (c) => {
-	const googleReady = Boolean(c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET);
+	const googleReady = Boolean(
+		c.env.GOOGLE_LOGIN_CLIENT_ID && c.env.GOOGLE_LOGIN_CLIENT_SECRET,
+	);
 	const googleHeroButton = googleReady
 		? `<a class="button google" href="/auth/google?return_to=/connections">Continue with Google</a>`
 		: `<a class="button google" href="/signup">Google setup pending</a>`;
