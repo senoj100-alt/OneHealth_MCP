@@ -41,6 +41,7 @@ describe("LLM nutrition insights", () => {
 		expect(body).toMatchObject({
 			model: "openai/gpt-oss-120b",
 			include_reasoning: false,
+			reasoning_effort: "low",
 			max_completion_tokens: 1800,
 		});
 		expect(body.max_tokens).toBeUndefined();
@@ -130,8 +131,9 @@ describe("LLM nutrition insights", () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
-		expect(retryBody.max_completion_tokens).toBe(1000);
+		expect(retryBody.max_completion_tokens).toBe(1800);
 		expect(retryBody.include_reasoning).toBe(false);
+		expect(retryBody.reasoning_effort).toBe("low");
 		expect(retryBody.messages[1].content).toContain(
 			"sugar: amount=45, unit=g, target=50, percent=90",
 		);
@@ -181,5 +183,44 @@ describe("LLM nutrition insights", () => {
 		expect(retryBody.messages[1].content).toContain("sugar: amount=42");
 		expect(retryBody.messages[1].content).toContain("fiber: amount=31");
 		expect(retryBody.messages[1].content).toContain("calcium: amount=900");
+	});
+
+	it("retries a truncated Groq completion instead of sending partial text", async () => {
+		const fetchMock = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						choices: [
+							{
+								finish_reason: "length",
+								message: { content: "**1. MACROS** Car" },
+							},
+						],
+					}),
+					{ status: 200 },
+				),
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						choices: [
+							{
+								finish_reason: "stop",
+								message: { content: "Complete verified analysis" },
+							},
+						],
+					}),
+					{ status: 200 },
+				),
+			);
+
+		await expect(generateNutritionInsight(connection(), INPUT)).resolves.toBe(
+			"Complete verified analysis",
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+		expect(retryBody.reasoning_effort).toBe("low");
+		expect(retryBody.max_completion_tokens).toBe(1800);
 	});
 });

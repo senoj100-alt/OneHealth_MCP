@@ -42,6 +42,7 @@ const ALLOWED_REQUEST_SETTINGS = new Set([
 	"max_tokens",
 	"max_completion_tokens",
 	"include_reasoning",
+	"reasoning_effort",
 	"reasoning_format",
 	"seed",
 ]);
@@ -108,6 +109,18 @@ export function normalizeAiRequestSettings(value: unknown): AiRequestSettings {
 		}
 		output.reasoning_format = String(input.reasoning_format);
 	}
+	if (input.reasoning_effort !== undefined) {
+		if (
+			!["none", "default", "low", "medium", "high"].includes(
+				String(input.reasoning_effort),
+			)
+		) {
+			throw new Error(
+				'reasoning_effort must be "none", "default", "low", "medium", or "high".',
+			);
+		}
+		output.reasoning_effort = String(input.reasoning_effort);
+	}
 	if (input.seed !== undefined) {
 		if (!Number.isInteger(input.seed))
 			throw new Error("seed must be a whole number.");
@@ -122,7 +135,11 @@ export function recommendedAiRequestSettings(
 ): AiRequestSettings {
 	const model = modelName.trim().toLowerCase();
 	if (provider === "groq" && model.startsWith("openai/gpt-oss-")) {
-		return { include_reasoning: false, max_completion_tokens: 1800 };
+		return {
+			include_reasoning: false,
+			reasoning_effort: "low",
+			max_completion_tokens: 1800,
+		};
 	}
 	if (provider === "groq" && model.startsWith("qwen/qwen3")) {
 		return { reasoning_format: "hidden", max_completion_tokens: 1800 };

@@ -390,12 +390,15 @@ async function callOpenAiCompatible(
 			}),
 		});
 	let response = await request(requestSettings);
+	let usedCompactRetry = false;
 	if (response.status === 413 && connection.provider === "groq") {
 		const fallbackSettings = { ...requestSettings };
 		delete fallbackSettings.max_tokens;
-		fallbackSettings.max_completion_tokens = 1000;
+		fallbackSettings.max_completion_tokens = 1800;
 		fallbackSettings.include_reasoning = false;
-		response = await request(fallbackSettings, 12000, true);
+		fallbackSettings.reasoning_effort = "low";
+		response = await request(fallbackSettings, 9000, true);
+		usedCompactRetry = true;
 	}
 	if (!response.ok) {
 		if (response.status === 413 && connection.provider === "groq") {
@@ -408,9 +411,39 @@ async function callOpenAiCompatible(
 		);
 	}
 	const data = (await response.json()) as {
-		choices?: Array<{ message?: { content?: unknown } }>;
+		choices?: Array<{
+			finish_reason?: string;
+			message?: { content?: unknown };
+		}>;
 	};
-	const text = textFromOpenAiContent(data.choices?.[0]?.message?.content);
+	let choice = data.choices?.[0];
+	let text = textFromOpenAiContent(choice?.message?.content);
+	if (
+		choice?.finish_reason === "length" &&
+		connection.provider === "groq" &&
+		!usedCompactRetry
+	) {
+		const fallbackSettings = { ...requestSettings };
+		delete fallbackSettings.max_tokens;
+		fallbackSettings.max_completion_tokens = 1800;
+		fallbackSettings.include_reasoning = false;
+		fallbackSettings.reasoning_effort = "low";
+		const retry = await request(fallbackSettings, 9000, true);
+		if (!retry.ok) {
+			throw new Error(
+				`Groq retry failed (${retry.status}): ${(await retry.text()).slice(0, 500)}`,
+			);
+		}
+		const retryData = (await retry.json()) as typeof data;
+		choice = retryData.choices?.[0];
+		text = textFromOpenAiContent(choice?.message?.content);
+		usedCompactRetry = true;
+	}
+	if (choice?.finish_reason === "length") {
+		throw new Error(
+			"Groq stopped before completing the nutrition insight. Select a non-reasoning model or a provider with a larger available output budget.",
+		);
+	}
 	if (!text && connection.provider === "groq") {
 		throw new Error(
 			"Groq returned no final answer. Increase max_completion_tokens or disable reasoning in Advanced request settings.",
