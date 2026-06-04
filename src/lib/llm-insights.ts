@@ -60,7 +60,6 @@ const GROQ_OMITTED_METADATA_KEYS = new Set([
 	"diaryGroup",
 	"foodId",
 	"icon",
-	"id",
 	"index",
 	"order",
 	"rank",
@@ -68,6 +67,94 @@ const GROQ_OMITTED_METADATA_KEYS = new Set([
 	"sortOrder",
 	"visible",
 ]);
+
+const CRONOMETER_NUTRIENT_NAMES: Record<string, string> = {
+	"203": "protein",
+	"204": "total_fat",
+	"205": "carbohydrate",
+	"208": "energy_kcal",
+	"221": "alcohol",
+	"255": "water",
+	"269": "sugar",
+	"291": "fiber",
+	"301": "calcium",
+	"303": "iron",
+	"304": "magnesium",
+	"305": "phosphorus",
+	"306": "potassium",
+	"307": "sodium",
+	"309": "zinc",
+	"312": "copper",
+	"315": "manganese",
+	"317": "selenium",
+	"318": "vitamin_a",
+	"323": "vitamin_e",
+	"324": "vitamin_d_iu",
+	"328": "vitamin_d",
+	"401": "vitamin_c",
+	"404": "thiamin_b1",
+	"405": "riboflavin_b2",
+	"406": "niacin_b3",
+	"410": "pantothenic_acid_b5",
+	"415": "vitamin_b6",
+	"417": "folate",
+	"418": "vitamin_b12",
+	"421": "choline",
+	"430": "vitamin_k",
+	"431": "folic_acid",
+	"432": "food_folate",
+	"435": "dietary_folate_equivalents",
+	"601": "cholesterol",
+	"606": "saturated_fat",
+	"645": "monounsaturated_fat",
+	"646": "polyunsaturated_fat",
+	"-203": "protein_target",
+	"-204": "fat_target",
+	"-205": "carbohydrate_target",
+	"-221": "alcohol_target",
+	"-1205": "net_carbs",
+};
+
+function nutrientLabel(value: Record<string, unknown>): string | null {
+	const id = value.id ?? value.nutrientId ?? value.nutrient_id;
+	const name =
+		value.name ?? value.label ?? value.nutrientName ?? value.nutrient_name;
+	if (typeof name === "string" && name.trim()) return name.trim();
+	if (id === undefined || id === null) return null;
+	return CRONOMETER_NUTRIENT_NAMES[String(id)] ?? `nutrient_id_${String(id)}`;
+}
+
+function extractNutrientRecords(
+	value: unknown,
+	records: string[],
+	seen = new Set<unknown>(),
+): void {
+	if (!value || typeof value !== "object" || seen.has(value)) return;
+	seen.add(value);
+	if (!Array.isArray(value)) {
+		const record = value as Record<string, unknown>;
+		const label = nutrientLabel(record);
+		const amount =
+			record.amount ?? record.value ?? record.consumed ?? record.total;
+		if (label && amount !== undefined && amount !== null) {
+			const details = [
+				`amount=${String(amount)}`,
+				record.unit === undefined ? "" : `unit=${String(record.unit)}`,
+				record.target === undefined ? "" : `target=${String(record.target)}`,
+				record.minimum === undefined ? "" : `minimum=${String(record.minimum)}`,
+				record.maximum === undefined ? "" : `maximum=${String(record.maximum)}`,
+				record.percent === undefined ? "" : `percent=${String(record.percent)}`,
+				record.percentage === undefined
+					? ""
+					: `percentage=${String(record.percentage)}`,
+			].filter(Boolean);
+			records.push(`${label}: ${details.join(", ")}`);
+		}
+	}
+	for (const child of Array.isArray(value) ? value : Object.values(value)) {
+		extractNutrientRecords(child, records, seen);
+	}
+}
 
 function flattenNutritionValues(
 	value: unknown,
@@ -113,7 +200,10 @@ function compactGroqNutrition(
 	const source = nutrition as Record<string, unknown>;
 	const nutrientLines: string[] = [];
 	const summaryLines: string[] = [];
-	flattenNutritionValues(source.nutrients, "nutrients", nutrientLines);
+	extractNutrientRecords(source.nutrients, nutrientLines);
+	if (nutrientLines.length === 0) {
+		flattenNutritionValues(source.nutrients, "nutrients", nutrientLines);
+	}
 	flattenNutritionValues(source.summary, "summary", summaryLines);
 
 	const entryNames = (Array.isArray(source.entries) ? source.entries : [])
@@ -127,7 +217,7 @@ function compactGroqNutrition(
 		.filter(Boolean);
 	const sections = [
 		`date=${String(source.date ?? "")}`,
-		"COMPLETE NUTRIENT TOTALS, TARGETS, UNITS, AND PERCENTAGES:",
+		"NUTRIENT TOTALS, TARGETS, UNITS, AND PERCENTAGES:",
 		...nutrientLines,
 		"SUMMARY:",
 		...summaryLines,

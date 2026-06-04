@@ -104,7 +104,12 @@ describe("LLM nutrition insights", () => {
 		const nutrition = {
 			date: "2026-06-03",
 			summary: { calories: 2200 },
-			nutrients: { vitaminD: 80, iron: 90, sugar: 45 },
+			nutrients: {
+				values: [
+					{ id: 269, amount: 45, unit: "g", target: 50, percent: 90 },
+					{ id: 303, amount: 16, unit: "mg", target: 18, percent: 89 },
+				],
+			},
 			entries: Array.from({ length: 200 }, (_, index) => ({
 				name: `Food ${index}`,
 				detail: "x".repeat(500),
@@ -124,7 +129,12 @@ describe("LLM nutrition insights", () => {
 		const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
 		expect(retryBody.max_completion_tokens).toBe(1000);
 		expect(retryBody.include_reasoning).toBe(false);
-		expect(retryBody.messages[1].content).toContain("nutrients.vitaminD=80");
+		expect(retryBody.messages[1].content).toContain(
+			"sugar: amount=45, unit=g, target=50, percent=90",
+		);
+		expect(retryBody.messages[1].content).toContain(
+			"iron: amount=16, unit=mg, target=18, percent=89",
+		);
 		expect(retryBody.messages[1].content).toContain(
 			"Nutrient values were prioritized",
 		);
