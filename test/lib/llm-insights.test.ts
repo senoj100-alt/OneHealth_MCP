@@ -141,4 +141,40 @@ describe("LLM nutrition insights", () => {
 		expect(retryBody.messages[1].content).not.toContain("x".repeat(500));
 		expect(retryBody.messages[1].content.length).toBeLessThan(14000);
 	});
+
+	it("translates numeric-key and pair-array Cronometer sugar values", async () => {
+		const fetchMock = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ error: { message: "too large" } }), {
+					status: 413,
+				}),
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						choices: [{ message: { content: "Sugar was available." } }],
+					}),
+					{ status: 200 },
+				),
+			);
+
+		await generateNutritionInsight(connection(), {
+			...INPUT,
+			nutrition: {
+				nutrients: {
+					totals: { "269": 42, "291": 31 },
+					values: [
+						[269, 42],
+						[301, 900],
+					],
+				},
+			},
+		});
+
+		const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+		expect(retryBody.messages[1].content).toContain("sugar: amount=42");
+		expect(retryBody.messages[1].content).toContain("fiber: amount=31");
+		expect(retryBody.messages[1].content).toContain("calcium: amount=900");
+	});
 });
