@@ -110,6 +110,9 @@ describe("LLM nutrition insights", () => {
 					{ id: 303, amount: 16, unit: "mg", target: 18, percent: 89 },
 				],
 			},
+			nutritionScores: {
+				scores: [{ id: 269, amount: 45, unit: "g", target: 50, percent: 90 }],
+			},
 			entries: Array.from({ length: 200 }, (_, index) => ({
 				name: `Food ${index}`,
 				detail: "x".repeat(500),
@@ -132,6 +135,8 @@ describe("LLM nutrition insights", () => {
 		expect(retryBody.messages[1].content).toContain(
 			"sugar: amount=45, unit=g, target=50, percent=90",
 		);
+		expect(retryBody.messages[1].content).toContain('"sugar":true');
+		expect(retryBody.messages[1].content).toContain('"sevenDayTrends":false');
 		expect(retryBody.messages[1].content).toContain(
 			"iron: amount=16, unit=mg, target=18, percent=89",
 		);

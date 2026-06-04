@@ -484,21 +484,24 @@ export class CronometerClient {
 	async getDailyNutrition(date?: string): Promise<unknown> {
 		const diary = (await this.getDiary(date)) as {
 			summary?: Record<string, unknown>;
-			diary?: unknown[];
+			diary?: Array<Record<string, unknown>>;
 		};
-		const nutrients = await this.getNutrients(date);
+		const [nutrients, nutritionScores] = await Promise.all([
+			this.getNutrients(date),
+			this.getNutritionScoresFromDiary(diary),
+		]);
 		return {
 			date: date ?? new Date().toISOString().slice(0, 10),
 			summary: diary.summary ?? null,
 			nutrients,
+			nutritionScores,
 			entries: diary.diary ?? [],
 		};
 	}
 
-	async getNutritionScores(date?: string): Promise<unknown> {
-		const diaryData = (await this.getDiary(date)) as {
-			diary?: Array<Record<string, unknown>>;
-		};
+	private async getNutritionScoresFromDiary(diaryData: {
+		diary?: Array<Record<string, unknown>>;
+	}): Promise<unknown> {
 		const servingIds = (diaryData.diary ?? [])
 			.filter(
 				(entry) => entry.type === "Serving" && entry.servingId !== undefined,
@@ -512,6 +515,13 @@ export class CronometerClient {
 			supplements: "true",
 			config: { call_version: 1 },
 		});
+	}
+
+	async getNutritionScores(date?: string): Promise<unknown> {
+		const diaryData = (await this.getDiary(date)) as {
+			diary?: Array<Record<string, unknown>>;
+		};
+		return this.getNutritionScoresFromDiary(diaryData);
 	}
 
 	async getMacroTargets(): Promise<unknown> {
